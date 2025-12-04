@@ -8,38 +8,65 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6?style=flat&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+**Repository:** [Udai-Senevirathne/Web-Crawling](https://github.com/Udai-Senevirathne/Web-Crawling)
+
 ---
 
 ## ✨ Features
 
 | Feature | Description |
 |---------|-------------|
-| 🕷️ **Web Crawler** | Automatically scrapes and indexes any website using Playwright |
-| 🧠 **RAG Pipeline** | Retrieval-Augmented Generation for accurate, contextual answers |
-| 💬 **Modern Chat UI** | Clean, responsive interface with real-time messaging |
-| ⚙️ **Admin Panel** | Easy-to-use dashboard for content management |
-| 🚀 **Zero Cost** | Uses Groq (free) + local embeddings — $0/month |
-| 📱 **Responsive** | Works seamlessly on desktop and mobile |
+| 🕷️ **Web Crawler** | Crawls websites using Playwright with configurable depth & page limits |
+| 🧠 **RAG Pipeline** | Chunks text, generates embeddings, stores in ChromaDB for semantic search |
+| 💬 **Client Chat** | Clean, professional chat interface with source attribution |
+| ⚙️ **Admin Panel** | Password-protected dashboard to add content sources |
+| 🚀 **Zero Cost** | Groq LLM (free) + local sentence-transformers embeddings |
+| 🎨 **Modern UI** | Teal/Slate dark theme with Inter font, fully responsive |
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   React + TS    │────▶│    FastAPI      │────▶│    ChromaDB     │
-│   (Frontend)    │◀────│    (Backend)    │◀────│  (Vector Store) │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                               │
-                    ┌──────────┴──────────┐
-                    ▼                     ▼
-             ┌─────────────┐       ┌─────────────┐
-             │    Groq     │       │   Local     │
-             │ (LLM - Free)│       │ Embeddings  │
-             └─────────────┘       └─────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         FRONTEND (React + TypeScript)                │
+│  ┌─────────────────────┐              ┌─────────────────────────┐   │
+│  │    ClientChat.tsx   │              │     AdminPanel.tsx      │   │
+│  │  • Send messages    │              │  • Enter URL to crawl   │   │
+│  │  • Display sources  │              │  • Set page limit/depth │   │
+│  │  • Conversation     │              │  • View system stats    │   │
+│  └──────────┬──────────┘              └───────────┬─────────────┘   │
+└─────────────┼─────────────────────────────────────┼─────────────────┘
+              │              HTTP API               │
+              ▼                                     ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         BACKEND (FastAPI + Python)                   │
+│  ┌─────────────┐  ┌─────────────────┐  ┌─────────────────────────┐  │
+│  │ /api/chat   │  │  /api/health    │  │    /api/ingest          │  │
+│  │ POST message│  │  GET status     │  │  POST start crawl       │  │
+│  └──────┬──────┘  └─────────────────┘  └───────────┬─────────────┘  │
+│         │                                          │                 │
+│         ▼                                          ▼                 │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │              CHATBOT ORCHESTRATOR                             │   │
+│  │  1. Embed query → 2. Search ChromaDB → 3. Generate response  │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│         │                    │                     │                 │
+│         ▼                    ▼                     ▼                 │
+│  ┌─────────────┐    ┌─────────────────┐    ┌─────────────────────┐  │
+│  │ LLM Service │    │  Vector Store   │    │ Embedding Service   │  │
+│  │ Groq API    │    │  ChromaDB       │    │ all-MiniLM-L6-v2    │  │
+│  │ Llama 3.3   │    │  Local Storage  │    │ Local (384 dim)     │  │
+│  └─────────────┘    └─────────────────┘    └─────────────────────┘  │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │               DATA INGESTION PIPELINE                         │   │
+│  │  Scraper (Playwright) → Chunker (1000 chars) → Embeddings    │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-> 📖 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
+> 📖 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed file-by-file documentation.
 
 ---
 
@@ -78,10 +105,13 @@ cd frontend && npm install && cd ..
 Create a `.env` file in the root directory:
 
 ```env
-# LLM Configuration
+# LLM Configuration (Using Groq - Free)
 LLM_PROVIDER=groq
-GROQ_API_KEY=your-groq-api-key-here
+GROQ_API_KEY=gsk_your_groq_api_key_here
 GROQ_MODEL=llama-3.3-70b-versatile
+
+# Embeddings (Local - No API needed)
+EMBEDDING_PROVIDER=local
 
 # Vector Store
 CHROMA_PERSIST_DIRECTORY=./data/chroma_db
@@ -90,49 +120,85 @@ CHROMA_PERSIST_DIRECTORY=./data/chroma_db
 TOP_K=5
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
+
+# CORS
+CORS_ORIGINS=http://localhost:3000,http://localhost:8000
 ```
 
 ### Run the Application
 
 **Terminal 1 - Backend:**
-```bash
+```powershell
+# Windows
+.\.venv\Scripts\Activate.ps1
 python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 8000
 ```
 
 **Terminal 2 - Frontend:**
-```bash
+```powershell
 cd frontend
 npm run dev
 ```
 
 ### Access
 
-| Service | URL |
-|---------|-----|
-| 💬 Chat UI | http://localhost:3000 |
-| ⚙️ Admin Panel | Click ⚙️ icon → Password: `admin123` |
-| 📚 API Docs | http://localhost:8000/docs |
+| Service | URL | Description |
+|---------|-----|-------------|
+| 💬 **Chat UI** | http://localhost:3000 | Main chat interface |
+| ⚙️ **Admin Panel** | Click ⚙️ → Password: `admin123` | Add content sources |
+| 📚 **API Docs** | http://localhost:8000/docs | Swagger documentation |
 
 ---
 
 ## 📁 Project Structure
 
 ```
-slt-chatbot/
-├── backend/
-│   ├── api/              # REST API endpoints
-│   │   └── routes/       # chat, health, ingestion
-│   ├── services/         # LLM, embeddings, vector store
-│   ├── data_ingestion/   # Web scraping pipeline
-│   └── utils/            # Config & logging
-├── frontend/
+Web-Crawling/
+├── .env                      # API keys & configuration
+├── .gitignore                # Git ignore rules
+├── requirements.txt          # Python dependencies
+├── README.md                 # This file
+├── ARCHITECTURE.md           # Detailed architecture docs
+│
+├── backend/                  # 🔙 PYTHON BACKEND
+│   ├── api/
+│   │   ├── main.py           # FastAPI app entry point
+│   │   └── routes/
+│   │       ├── chat.py       # POST /api/chat
+│   │       ├── health.py     # GET /api/health
+│   │       └── ingestion.py  # POST /api/ingest
+│   ├── services/
+│   │   ├── chatbot_orchestrator.py  # RAG coordinator
+│   │   ├── llm_service.py           # Groq/OpenAI integration
+│   │   ├── embeddings.py            # Local embeddings
+│   │   └── vector_store.py          # ChromaDB operations
+│   ├── data_ingestion/
+│   │   ├── scraper.py        # Playwright web crawler
+│   │   ├── chunker.py        # Text splitter
+│   │   └── pipeline.py       # Ingestion orchestrator
+│   └── utils/
+│       ├── config.py         # Environment config
+│       └── logger.py         # Logging setup
+│
+├── frontend/                 # 🎨 REACT FRONTEND
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts
 │   └── src/
-│       ├── components/   # ClientChat, AdminPanel
-│       └── services/     # API client
+│       ├── App.tsx           # Main app + routing
+│       ├── App.css           # Global styles
+│       ├── components/
+│       │   ├── ClientChat.tsx/css   # Chat interface
+│       │   └── AdminPanel.tsx/css   # Admin UI
+│       └── services/
+│           └── api.ts        # Backend API client
+│
 ├── data/
-│   └── chroma_db/        # Vector database
-├── .env                  # Configuration
-└── requirements.txt      # Python dependencies
+│   └── chroma_db/            # 💾 Vector database storage
+│
+└── tests/                    # 🧪 Unit tests
+    ├── conftest.py
+    └── test_basic.py
 ```
 
 ---
@@ -175,14 +241,15 @@ curl -X POST http://localhost:8000/api/chat \
 
 ## 🛠️ Tech Stack
 
-| Category | Technology | Why? |
-|----------|------------|------|
-| **Frontend** | React 18, TypeScript, Vite | Fast, type-safe, modern DX |
-| **Backend** | FastAPI, Python 3.11 | Async, auto-docs, fast |
-| **LLM** | Groq (Llama 3.3 70B) | Free, fast inference |
-| **Embeddings** | Sentence Transformers | Local, no API costs |
-| **Vector DB** | ChromaDB | Simple, embedded, fast |
-| **Scraping** | Playwright, BeautifulSoup | JS rendering support |
+| Category | Technology | Details |
+|----------|------------|---------|
+| **Frontend** | React 18 + TypeScript | Vite build, modern hooks |
+| **Styling** | CSS3 | Teal (#0d9488) / Slate (#0f172a) theme, Inter font |
+| **Backend** | FastAPI + Python 3.11 | Async, auto-generated OpenAPI docs |
+| **LLM** | Groq | Llama 3.3 70B - Free tier, fast inference |
+| **Embeddings** | Sentence Transformers | all-MiniLM-L6-v2 (local, 384 dimensions) |
+| **Vector DB** | ChromaDB | Embedded, persistent, SQLite-based |
+| **Web Scraping** | Playwright + BeautifulSoup | JavaScript rendering support |
 
 ---
 
@@ -199,15 +266,17 @@ curl -X POST http://localhost:8000/api/chat \
 
 ## 🔧 Configuration Options
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LLM_PROVIDER` | `groq` \| `openai` \| `google` | `groq` |
-| `GROQ_API_KEY` | Your Groq API key | — |
-| `GROQ_MODEL` | Model to use | `llama-3.3-70b-versatile` |
-| `TOP_K` | Chunks to retrieve | `5` |
-| `CHUNK_SIZE` | Chars per chunk | `1000` |
-| `CHUNK_OVERLAP` | Overlap between chunks | `200` |
-| `CORS_ORIGINS` | Allowed origins | `localhost:3000,8000` |
+| Variable | Description | Default | Implemented |
+|----------|-------------|---------|-------------|
+| `LLM_PROVIDER` | `groq` \| `openai` \| `google` | `groq` | ✅ |
+| `GROQ_API_KEY` | Your Groq API key | — | ✅ |
+| `GROQ_MODEL` | Model to use | `llama-3.3-70b-versatile` | ✅ |
+| `EMBEDDING_PROVIDER` | `local` \| `google` \| `openai` | `local` | ✅ |
+| `TOP_K` | Chunks to retrieve | `5` | ✅ |
+| `CHUNK_SIZE` | Chars per chunk | `1000` | ✅ |
+| `CHUNK_OVERLAP` | Overlap between chunks | `200` | ✅ |
+| `CORS_ORIGINS` | Allowed origins | `localhost:3000,8000` | ✅ |
+| `CHROMA_PERSIST_DIRECTORY` | Vector DB path | `./data/chroma_db` | ✅ |
 
 ---
 
@@ -247,26 +316,35 @@ docker run -p 8000:8000 --env-file .env rag-chatbot
 
 ---
 
-## 📈 Roadmap
+## 📈 What's Implemented
 
-- [ ] 🔐 User authentication system
-- [ ] 📊 Analytics dashboard
-- [ ] 🔄 Streaming responses
-- [ ] 📎 File upload (PDF, DOCX)
-- [ ] 🌐 Multi-language support
-- [ ] 💾 Conversation history persistence
+### ✅ Completed Features
+- [x] **Web Crawler** — Playwright-based with configurable depth/pages
+- [x] **Text Chunking** — 1000 char chunks with 200 char overlap
+- [x] **Local Embeddings** — Sentence Transformers (no API cost)
+- [x] **Vector Storage** — ChromaDB with persistent storage
+- [x] **LLM Integration** — Groq (Llama 3.3 70B) for responses
+- [x] **Chat API** — POST /api/chat with conversation history
+- [x] **Ingestion API** — Async job-based crawling
+- [x] **Client Chat UI** — Professional dark theme
+- [x] **Admin Panel** — Password-protected (admin123)
+- [x] **Source Attribution** — Shows where answers come from
+- [x] **Error Handling** — Graceful error messages in UI
+
+### 🔮 Future Improvements
+- [ ] User authentication system
+- [ ] Streaming responses (SSE)
+- [ ] File upload (PDF, DOCX)
+- [ ] Conversation persistence
+- [ ] Analytics dashboard
+- [ ] Multi-language support
 
 ---
 
-## 🤝 Contributing
+## 👤 Author
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+**Udai Senevirathne**  
+GitHub: [@Udai-Senevirathne](https://github.com/Udai-Senevirathne)
 
 ---
 
@@ -278,14 +356,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Groq](https://groq.com) — Free, fast LLM inference
-- [ChromaDB](https://trychroma.com) — Simple vector database
+- [Groq](https://groq.com) — Free, ultra-fast LLM inference
+- [ChromaDB](https://trychroma.com) — Simple embedded vector database
 - [FastAPI](https://fastapi.tiangolo.com) — Modern Python web framework
 - [Sentence Transformers](https://sbert.net) — State-of-the-art embeddings
+- [Playwright](https://playwright.dev) — Reliable browser automation
 
 ---
 
 <p align="center">
-  <sub>Built with ❤️ using Python & React</sub>
+  <sub>Built with ❤️ by Udai Senevirathne</sub>
 </p>
 
