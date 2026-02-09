@@ -14,7 +14,7 @@
 |---------|-------------|
 | 🕷️ **Web Crawler** | Crawls websites using Playwright with configurable depth & page limits |
 | 🧠 **RAG Pipeline** | Splits text into chunks, generates embeddings, stores in vector database |
-| 💬 **Chat Interface** | Clean chat UI with source attribution |
+| 💬 **Chat Interface** | Clean chat UI with conversation history & source attribution |
 | ⚙️ **Admin Panel** | Web-based content ingestion interface |
 | 🚀 **Zero Cost** | Groq LLM (free) + local embeddings + ChromaDB (local) |
 | 📁 **File Upload** | Support for PDF and text file ingestion |
@@ -180,13 +180,24 @@ User Question: "What is your pricing?"
 
 ## 📡 API Reference
 
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/chat` | Send message & get AI response |
 | `GET` | `/api/chat/stats` | Get system statistics |
+| `GET` | `/api/chat/sessions` | List all chat sessions |
+| `GET` | `/api/chat/sessions/{session_id}` | Get specific chat session details |
+| `DELETE` | `/api/chat/sessions/{session_id}` | Delete a chat session |
+| `GET` | `/api/chat/settings` | Get chat settings (system prompt) |
+| `POST` | `/api/chat/settings` | Update chat settings |
 | `POST` | `/api/ingest` | Start website crawl |
-| `GET` | `/api/ingest/{job_id}` | Check crawl status |
-| `GET` | `/api/health` | Health check |
+| `GET` | `/api/ingest` | List all ingestion jobs |
+| `GET` | `/api/ingest/{job_id}` | Check job status |
+| `DELETE` | `/api/ingest/{job_id}` | Delete ingestion job |
+| `POST` | `/api/ingest/upload` | Upload files (PDF/Text) for ingestion |
+| `POST` | `/api/ingest/reset` | Reset database and clear all jobs |
+| `GET` | `/api/health` | Basic health check |
+| `GET` | `/api/status` | Detailed system status |
 
 ### Example: Start Crawling
 
