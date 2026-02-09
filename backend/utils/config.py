@@ -30,9 +30,14 @@ class Config:
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
 
     # Vector Store Configuration
-    VECTOR_DB_TYPE: str = os.getenv("VECTOR_DB_TYPE", "chromadb")
+    VECTOR_DB_TYPE: str = os.getenv("VECTOR_STORE_TYPE", "chroma")
     CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma")
     CHROMA_COLLECTION_NAME: str = os.getenv("CHROMA_COLLECTION_NAME", "website_docs")
+
+    # Pinecone Configuration
+    PINECONE_API_KEY: str = os.getenv("PINECONE_API_KEY", "")
+    PINECONE_ENVIRONMENT: str = os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
+    PINECONE_INDEX_NAME: str = os.getenv("PINECONE_INDEX_NAME", "webdocs")
 
     # Database Configuration
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")

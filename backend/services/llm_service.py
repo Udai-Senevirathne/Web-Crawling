@@ -43,14 +43,16 @@ class LLMService:
         self,
         query: str,
         context: str,
-        conversation_history: Optional[List[Dict]] = None
+        conversation_history: Optional[List[Dict]] = None,
+        system_prompt: Optional[str] = None
     ) -> str:
         """Generate response using LLM."""
-        system_prompt = os.getenv(
-            "SYSTEM_PROMPT",
-            "You are a helpful AI assistant for this website. Answer questions based on the provided context. "
-            "If you cannot find the answer in the context, politely say that you don't have that information."
-        )
+        if not system_prompt:
+            system_prompt = os.getenv(
+                "SYSTEM_PROMPT",
+                "You are a helpful AI assistant for this website. Answer questions based on the provided context. "
+                "If you cannot find the answer in the context, politely say that you don't have that information."
+            )
 
         try:
             if self.provider == "google":

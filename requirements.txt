@@ -1,68 +1,45 @@
 # Core Dependencies
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
 
 # LLM and AI
-openai==1.3.5
-anthropic==0.7.0
-google-generativeai==0.3.2
-langchain==0.1.0
-langchain-openai==0.0.2
-langchain-community==0.0.10
+openai>=1.0.0
+groq>=0.4.0
+google-generativeai>=0.3.0
 
 # Vector Stores
-chromadb==0.4.18
-pinecone-client==2.2.4
+chromadb>=0.4.0
+pinecone-client>=3.0.0
 
 # Embeddings
-sentence-transformers==2.2.2
-tiktoken==0.5.1
+sentence-transformers>=2.2.0
+tiktoken>=0.5.0
 
 # Web Scraping
-beautifulsoup4==4.12.2
-playwright==1.40.0
-requests==2.31.0
-lxml==4.9.3
+beautifulsoup4>=4.12.0
+playwright>=1.40.0
+requests>=2.31.0
+lxml>=4.9.0
+aiohttp>=3.9.0
 
-# Database
-sqlalchemy==2.0.23
-psycopg2-binary==2.9.9
-redis==5.0.1
-pymongo==4.6.0
-
-# Async & Task Queue
-celery==5.3.4
-aiohttp==3.9.1
+# Database (Optional)
+pymongo>=4.6.0
+dnspython>=2.4.0
 
 # Utilities
-python-dotenv==1.0.0
-pyyaml==6.0.1
-python-multipart==0.0.6
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+python-multipart>=0.0.6
+tqdm>=4.66.0
+PyPDF2>=3.0.0
 
-# Monitoring & Logging
-python-json-logger==2.0.7
-prometheus-client==0.19.0
-
-# Security
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
+# Security (for auth features)
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
 
 # Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-httpx==0.25.2
-
-# Code Quality
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
-isort==5.12.0
-
-# Development
-watchdog==3.0.0
-ipython==8.18.1
-
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0

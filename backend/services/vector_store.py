@@ -1,37 +1,117 @@
 """
-Vector store for document embeddings using ChromaDB.
+Vector store for document embeddings.
+Supports ChromaDB (local) and Pinecone (cloud) with tenant isolation.
 """
-import chromadb
-from chromadb.config import Settings
+
 from typing import List, Dict, Optional
 import os
+import shutil
+import sqlite3
+import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class VectorStore:
     def __init__(self):
-        persist_dir = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma")
+        self.store_type = os.getenv('VECTOR_STORE_TYPE', 'chroma').lower()
+        
+        if self.store_type == 'pinecone':
+            self._init_pinecone()
+        else:
+            self._init_chromadb()
 
-        # Create directory if it doesn't exist
+    def _init_chromadb(self):
+        """Initialize ChromaDB (local vector store)."""
+        try:
+            import chromadb
+            from chromadb.config import Settings
+        except ImportError as e:
+            logger.error('chromadb is required but not installed: %s', e)
+            raise
+
+        persist_dir = os.getenv('CHROMA_PERSIST_DIRECTORY', './data/chroma_db')
+        collection_name = os.getenv('CHROMA_COLLECTION_NAME', 'website_docs')
+
         os.makedirs(persist_dir, exist_ok=True)
 
-        # Initialize ChromaDB client
-        self.client = chromadb.PersistentClient(
-            path=persist_dir,
-            settings=Settings(anonymized_telemetry=False)
-        )
-
-        collection_name = os.getenv("CHROMA_COLLECTION_NAME", "website_docs")
-
-        # Get or create collection
+        # Initialize client
+        client = None
         try:
-            self.collection = self.client.get_collection(name=collection_name)
-            print(f"[OK] Loaded existing collection: {collection_name}")
-        except Exception:
-            self.collection = self.client.create_collection(
-                name=collection_name,
-                metadata={"description": "Website content embeddings"}
+            client = chromadb.PersistentClient(
+                path=persist_dir,
+                settings=Settings(anonymized_telemetry=False)
             )
-            print(f"[OK] Created new collection: {collection_name}")
+        except Exception as e:
+            logger.warning('PersistentClient failed, trying Client: %s', e)
+            try:
+                settings = Settings(persist_directory=persist_dir, anonymized_telemetry=False)
+                client = chromadb.Client(settings)
+            except Exception as e2:
+                logger.exception('Failed to initialize chromadb client: %s', e2)
+                raise
+
+        # Ensure collection exists
+        try:
+            collection = client.get_or_create_collection(
+                name=collection_name,
+                metadata={'description': 'Website content embeddings'}
+            )
+            logger.info('Loaded ChromaDB collection: %s', collection_name)
+        except Exception as e:
+            # Handle sqlite schema incompatibilities
+            if 'no such column' in str(e).lower() or isinstance(e, sqlite3.OperationalError):
+                sqlite_file = os.path.join(persist_dir, 'chroma.sqlite3')
+                if os.path.exists(sqlite_file):
+                    backup = sqlite_file + '.bak'
+                    shutil.move(sqlite_file, backup)
+                    logger.warning('Backed up incompatible Chroma sqlite DB to %s', backup)
+                collection = client.get_or_create_collection(
+                    name=collection_name,
+                    metadata={'description': 'Website content embeddings'}
+                )
+                logger.info('Created new ChromaDB collection after backup: %s', collection_name)
+            else:
+                logger.exception('Failed to create Chroma collection: %s', e)
+                raise
+
+        self.client = client
+        self.collection = collection
+        self.store_type = 'chroma'
+
+    def _init_pinecone(self):
+        """Initialize Pinecone (cloud vector store)."""
+        try:
+            from pinecone import Pinecone
+        except ImportError as e:
+            logger.error('pinecone-client is required but not installed: %s', e)
+            raise
+
+        api_key = os.getenv('PINECONE_API_KEY')
+        if not api_key:
+            raise ValueError('PINECONE_API_KEY environment variable is not set')
+
+        self.pc = Pinecone(api_key=api_key)
+        index_name = os.getenv('PINECONE_INDEX_NAME', 'website-docs')
+
+        # Check if index exists
+        existing_indexes = [idx.name for idx in self.pc.list_indexes()]
+        if index_name not in existing_indexes:
+            # Create index
+            environment = os.getenv('PINECONE_ENVIRONMENT', 'us-east-1')
+            self.pc.create_index(
+                name=index_name,
+                dimension=384,  # sentence-transformers all-MiniLM-L6-v2
+                metric='cosine',
+                spec={'serverless': {'cloud': 'aws', 'region': environment}}
+            )
+            logger.info('Created Pinecone index: %s', index_name)
+
+        self.index = self.pc.Index(index_name)
+        logger.info('Connected to Pinecone index: %s', index_name)
 
     def add_documents(
         self,
@@ -42,7 +122,7 @@ class VectorStore:
     ):
         """Add documents with embeddings to vector store."""
         if not documents:
-            print("Warning: No documents to add")
+            logger.warning('No documents to add')
             return
 
         # Filter out any None embeddings
@@ -53,21 +133,58 @@ class VectorStore:
         ]
 
         if not valid_items:
-            print("Warning: No valid embeddings to add")
+            logger.warning('No valid embeddings to add')
             return
 
         documents, embeddings, metadatas, ids = zip(*valid_items)
 
+        if self.store_type == 'chroma':
+            self._add_to_chromadb(list(documents), list(embeddings), list(metadatas), list(ids))
+        elif self.store_type == 'pinecone':
+            self._add_to_pinecone(list(documents), list(embeddings), list(metadatas), list(ids))
+
+    def _add_to_chromadb(self, documents, embeddings, metadatas, ids):
+        """Add documents to ChromaDB."""
         try:
             self.collection.add(
-                documents=list(documents),
-                embeddings=list(embeddings),
-                metadatas=list(metadatas),
-                ids=list(ids)
+                documents=documents,
+                embeddings=embeddings,
+                metadatas=metadatas,
+                ids=ids
             )
-            print(f"[OK] Added {len(documents)} documents to vector store")
+            logger.info('Added %d documents to ChromaDB', len(documents))
         except Exception as e:
-            print(f"Error adding documents: {e}")
+            logger.exception('Error adding documents to ChromaDB: %s', e)
+            raise
+
+    def _add_to_pinecone(self, documents, embeddings, metadatas, ids):
+        """Add documents to Pinecone."""
+        try:
+            vectors = []
+            namespace = None
+            for doc, emb, meta, id_ in zip(documents, embeddings, metadatas, ids):
+                # Pinecone expects metadata as key-value pairs
+                metadata = {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool))}
+                metadata['text'] = doc  # Store the document text in metadata
+
+                # Capture namespace for client isolation if present
+                if not namespace and isinstance(meta, dict) and meta.get('client_id'):
+                    namespace = str(meta.get('client_id'))
+
+                vectors.append({
+                    'id': id_,
+                    'values': emb,
+                    'metadata': metadata
+                })
+
+            # Use namespace (per-tenant) if provided for isolation
+            if namespace:
+                self.index.upsert(vectors=vectors, namespace=namespace)
+            else:
+                self.index.upsert(vectors=vectors)
+            logger.info('Added %d documents to Pinecone', len(documents))
+        except Exception as e:
+            logger.exception('Error adding documents to Pinecone: %s', e)
             raise
 
     def search(
@@ -77,6 +194,13 @@ class VectorStore:
         where: Optional[Dict] = None
     ) -> Dict:
         """Search for similar documents."""
+        if self.store_type == 'chroma':
+            return self._search_chromadb(query_embedding, top_k, where)
+        elif self.store_type == 'pinecone':
+            return self._search_pinecone(query_embedding, top_k, where)
+
+    def _search_chromadb(self, query_embedding, top_k, where):
+        """Search ChromaDB."""
         try:
             results = self.collection.query(
                 query_embeddings=[query_embedding],
@@ -85,47 +209,127 @@ class VectorStore:
             )
             return results
         except Exception as e:
-            print(f"Error searching vector store: {e}")
+            logger.exception('Error searching ChromaDB: %s', e)
+            return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+
+    def _search_pinecone(self, query_embedding, top_k, where):
+        """Search Pinecone."""
+        try:
+            # Convert where clause to Pinecone filter format if needed
+            filter_dict = None
+            namespace = None
+            if where:
+                where_copy = dict(where)
+                # If client_id is passed in where, use it as namespace
+                if 'client_id' in where_copy:
+                    namespace = where_copy.pop('client_id')
+                filter_dict = where_copy if where_copy else None
+
+            results = self.index.query(
+                vector=query_embedding,
+                top_k=top_k,
+                filter=filter_dict,
+                include_metadata=True,
+                namespace=namespace
+            )
+
+            # Convert Pinecone results to ChromaDB-like format for compatibility
+            documents = [[match.metadata.get('text', '') for match in results.matches]]
+            metadatas = [[{k: v for k, v in match.metadata.items() if k != 'text'} for match in results.matches]]
+            distances = [[match.score for match in results.matches]]
+
+            return {
+                'documents': documents,
+                'metadatas': metadatas,
+                'distances': distances
+            }
+        except Exception as e:
+            logger.exception('Error searching Pinecone: %s', e)
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
 
     def count(self) -> int:
-        """Get count of documents in collection."""
-        try:
-            return self.collection.count()
-        except Exception:
-            return 0
+        """Get count of documents in collection/index."""
+        if self.store_type == 'chroma':
+            try:
+                return int(self.collection.count())
+            except Exception:
+                return 0
+        elif self.store_type == 'pinecone':
+            try:
+                stats = self.index.describe_index_stats()
+                return stats.total_vector_count
+            except Exception as e:
+                logger.exception('Error getting Pinecone count: %s', e)
+                return 0
 
     def delete_collection(self):
-        """Delete the collection."""
-        try:
-            self.client.delete_collection(self.collection.name)
-            print(f"[OK] Deleted collection: {self.collection.name}")
-        except Exception as e:
-            print(f"Error deleting collection: {e}")
+        """Delete the collection/index."""
+        if self.store_type == 'chroma':
+            try:
+                self.client.delete_collection(self.collection.name)
+                logger.info('Deleted ChromaDB collection: %s', self.collection.name)
+            except Exception as e:
+                logger.exception('Error deleting ChromaDB collection: %s', e)
+        elif self.store_type == 'pinecone':
+            try:
+                index_name = os.getenv('PINECONE_INDEX_NAME', 'website-docs')
+                self.pc.delete_index(index_name)
+                logger.info('Deleted Pinecone index: %s', index_name)
+            except Exception as e:
+                logger.exception('Error deleting Pinecone index: %s', e)
 
     def reset_collection(self):
-        """Reset the collection (delete and recreate)."""
-        collection_name = self.collection.name
-        self.delete_collection()
-        self.collection = self.client.create_collection(
-            name=collection_name,
-            metadata={"description": "Website content embeddings"}
-        )
-        print(f"[OK] Reset collection: {collection_name}")
+        """Reset the collection/index (delete and recreate)."""
+        if self.store_type == 'chroma':
+            collection_name = self.collection.name
+            self.delete_collection()
+            self.collection = self.client.create_collection(
+                name=collection_name,
+                metadata={'description': 'Website content embeddings'}
+            )
+            logger.info('Reset ChromaDB collection: %s', collection_name)
+        elif self.store_type == 'pinecone':
+            index_name = os.getenv('PINECONE_INDEX_NAME', 'website-docs')
+            environment = os.getenv('PINECONE_ENVIRONMENT', 'us-east-1')
+            self.delete_collection()
+            # Recreate the index
+            self.pc.create_index(
+                name=index_name,
+                dimension=384,
+                metric='cosine',
+                spec={'serverless': {'cloud': 'aws', 'region': environment}}
+            )
+            self.index = self.pc.Index(index_name)
+            logger.info('Reset Pinecone index: %s', index_name)
 
 
 # Usage example
-if __name__ == "__main__":
+if __name__ == '__main__':
     store = VectorStore()
+    print(f'Store type: {store.store_type}')
+    print(f'Current document count: {store.count()}')
+    def delete_documents(self, where: Dict):
+        """Delete documents from vector store based on metadata filter."""
+        if not where:
+            logger.warning("No filter provided for deletion")
+            return
 
-    print(f"Current document count: {store.count()}")
-
-    # Test adding documents
-    test_docs = ["Test document 1", "Test document 2"]
-    test_embeddings = [[0.1] * 1536, [0.2] * 1536]  # Dummy embeddings
-    test_metadatas = [{"source": "test1"}, {"source": "test2"}]
-    test_ids = ["test_1", "test_2"]
-
-    # store.add_documents(test_docs, test_embeddings, test_metadatas, test_ids)
-    # print(f"Document count after adding: {store.count()}")
-
+        try:
+            if self.store_type == 'chroma':
+                self.collection.delete(where=where)
+                logger.info(f"Deleted documents from ChromaDB matching: {where}")
+            elif self.store_type == 'pinecone':
+                # Pinecone deletion by metadata is more complex, requires fetch then delete
+                # For now, we support deletion by ID prefix if 'job_id' is passed as filter
+                # This is a simplification; production usage might need vector search to find IDs first
+                # or metadata filtering if using serverless index
+                
+                # Try delete by metadata (works on serverless indexes)
+                try:
+                    self.index.delete(filter=where)
+                    logger.info(f"Deleted documents from Pinecone matching: {where}")
+                except Exception as e:
+                    logger.warning(f"Pinecone metadata deletion failed: {e}")
+        except Exception as e:
+            logger.error(f"Error deleting documents: {e}")
+            raise

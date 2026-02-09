@@ -14,25 +14,54 @@ class ChatbotOrchestrator:
         self.vector_store = VectorStore()
         self.llm_service = LLMService()
         self.top_k = int(os.getenv("TOP_K", "5"))
-        self.similarity_threshold = float(os.getenv("SIMILARITY_THRESHOLD", "0.7"))
+        self.similarity_threshold = float(os.getenv("SIMILARITY_THRESHOLD", "2.0"))
 
     async def process_query(
         self,
         query: str,
         session_id: Optional[str] = None,
-        conversation_history: Optional[List[Dict]] = None
+        conversation_history: Optional[List[Dict]] = None,
+        client_id: Optional[str] = None,
+        system_prompt: Optional[str] = None
     ) -> Dict:
-        """Process user query and generate response using RAG pipeline."""
+        """Process user query and generate response using RAG pipeline.
+        
+        Args:
+            query: The user's question
+            session_id: Optional session ID for conversation tracking
+            conversation_history: Optional list of previous messages
+            client_id: Optional client ID for tenant isolation (None = search all)
+            system_prompt: Optional system prompt to override default behavior
+        """
+        print(f"Processing query: {query[:50]}...")
+        if client_id:
+            print(f"  Filtering by client_id: {client_id}")
 
         # Step 1: Generate query embedding
-        print(f"Processing query: {query[:50]}...")
-        query_embedding = self.embedding_service.generate_embedding(query)
+        try:
+            query_embedding = self.embedding_service.generate_embedding(query)
+        except Exception as e:
+            print(f"Error generating embedding: {e}")
+            return {
+                "response": "I'm having trouble processing your question. Please try again.",
+                "sources": [],
+                "session_id": session_id,
+                "context_used": False
+            }
 
         # Step 2: Search vector store for relevant documents
-        search_results = self.vector_store.search(
-            query_embedding=query_embedding,
-            top_k=self.top_k
-        )
+        # Only apply where filter if client_id is provided
+        where_clause = {"client_id": client_id} if client_id else None
+        
+        try:
+            search_results = self.vector_store.search(
+                query_embedding=query_embedding,
+                top_k=self.top_k,
+                where=where_clause
+            )
+        except Exception as e:
+            print(f"Error searching vector store: {e}")
+            search_results = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
 
         # Step 3: Prepare context from retrieved documents
         context = self._prepare_context(search_results)
@@ -43,11 +72,16 @@ class ChatbotOrchestrator:
             context = "No relevant information found in the knowledge base."
 
         # Step 4: Generate response using LLM
-        response = self.llm_service.generate_response(
-            query=query,
-            context=context,
-            conversation_history=conversation_history
-        )
+        try:
+            response = self.llm_service.generate_response(
+                query=query,
+                context=context,
+                conversation_history=conversation_history,
+                system_prompt=system_prompt
+            )
+        except Exception as e:
+            print(f"Error generating LLM response: {e}")
+            response = "I apologize, but I'm having trouble generating a response right now. Please try again."
 
         # Step 5: Return structured response
         return {
@@ -68,15 +102,14 @@ class ChatbotOrchestrator:
         context_parts = []
 
         for i, doc in enumerate(documents):
-            # Skip if document is empty or similarity is too low
+            # Skip if document is empty
             if not doc or not doc.strip():
                 continue
 
             # Check distance threshold if available (lower distance = higher similarity)
             if distances and i < len(distances):
-                # ChromaDB uses L2 distance - convert to similarity
-                # Typically want distance < 1.0 for good matches
-                if distances[i] > 2.0:  # Adjust threshold as needed
+                # ChromaDB uses L2 distance - typically want distance < 2.0 for good matches
+                if distances[i] > self.similarity_threshold:
                     continue
 
             context_parts.append(f"[Source {i+1}]\n{doc}\n")
@@ -92,12 +125,18 @@ class ChatbotOrchestrator:
             return []
 
         metadatas = search_results['metadatas'][0] if search_results['metadatas'] else []
+        distances = search_results.get('distances', [[]])[0] if search_results.get('distances') else []
         sources = []
 
         seen_urls = set()
-        for metadata in metadatas:
+        for i, metadata in enumerate(metadatas):
             if not metadata:
                 continue
+
+            # Skip low-relevance results
+            if distances and i < len(distances):
+                if distances[i] > self.similarity_threshold:
+                    continue
 
             url = metadata.get('source_url', '')
             if url and url not in seen_urls:
@@ -111,11 +150,15 @@ class ChatbotOrchestrator:
 
     def get_stats(self) -> Dict:
         """Get statistics about the chatbot's knowledge base."""
+        embedding_model = getattr(self.embedding_service, 'model', None)
+        if embedding_model is None and self.embedding_service.provider == 'local':
+            embedding_model = 'all-MiniLM-L6-v2'
+        
         return {
             "total_documents": self.vector_store.count(),
             "top_k": self.top_k,
             "model": self.llm_service.model,
-            "embedding_model": self.embedding_service.model
+            "embedding_model": embedding_model
         }
 
 
@@ -145,4 +188,3 @@ if __name__ == "__main__":
             print("\nNo documents in knowledge base. Run data ingestion first.")
 
     asyncio.run(test())
-

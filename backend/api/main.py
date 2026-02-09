@@ -1,25 +1,32 @@
 """
 FastAPI application entry point.
 """
+import asyncio
+import sys
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import chat, health, ingestion
 import os
 from dotenv import load_dotenv
+import logging
 
 # Load environment variables
 load_dotenv()
 
 app = FastAPI(
-    title="Website Chatbot API",
-    description="RAG-based chatbot for website content",
+    title="Web Crawler Chatbot API",
+    description="RAG-based chatbot for crawled website content",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
 # CORS Configuration
-origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",")
+origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8000,http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in origins],
@@ -28,31 +35,56 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include core routers
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(ingestion.router, prefix="/api", tags=["ingestion"])
 
+# Optional: Include auth and clients routers if auth is enabled
+try:
+    from .routes import auth, clients
+    app.include_router(auth.router, prefix="/api", tags=["auth"])
+    app.include_router(clients.router, prefix="/api", tags=["clients"])
+except ImportError:
+    pass
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
-    print("=" * 60)
-    print("Starting Website Chatbot API")
-    print("=" * 60)
-    print(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
-    print(f"API Docs: http://localhost:{os.getenv('API_PORT', '8000')}/docs")
-    print("=" * 60)
+    logger = logging.getLogger("uvicorn")
+    logger.info("%s", "=" * 60)
+    logger.info("Starting Web Crawler Chatbot API")
+    logger.info("Environment: %s", os.getenv('ENVIRONMENT', 'development'))
+    logger.info("API Docs: http://localhost:%s/docs", os.getenv('API_PORT', '8000'))
+    logger.info("Vector Store: %s", os.getenv('VECTOR_STORE_TYPE', 'chroma'))
+    logger.info("LLM Provider: %s", os.getenv('LLM_PROVIDER', 'groq'))
+    
+    # Try to connect to database (optional)
+    try:
+        from backend.services.db import get_db, use_fake_db
+        if use_fake_db():
+            logger.info("Database: In-memory (USE_FAKE_DB=1)")
+        else:
+            db = get_db()
+            logger.info("Database: MongoDB connected")
+    except Exception as e:
+        logger.warning("Database not available: %s (using in-memory)", e)
+    
+    logger.info("%s", "=" * 60)
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
     print("\nShutting down chatbot API...")
 
+
 @app.get("/")
 async def root():
     """Root endpoint."""
     return {
-        "message": "Website Chatbot API",
+        "message": "Web Crawler Chatbot API",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/api/health"
@@ -68,4 +100,3 @@ if __name__ == "__main__":
         port=int(os.getenv("API_PORT", "8000")),
         reload=os.getenv("RELOAD", "False").lower() == "true"
     )
-

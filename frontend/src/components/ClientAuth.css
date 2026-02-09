@@ -1,0 +1,31 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+.auth-modal {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  width: 420px;
+  max-width: 90%;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+}
+.auth-modal h2 {
+  margin-top: 0;
+}
+.form-group {
+  margin: 10px 0;
+}
+.form-group label { display:block; font-size: 0.9rem; margin-bottom:6px }
+.form-group input { width:100%; padding:8px; border-radius:4px; border:1px solid #ccc }
+.modal-buttons { display:flex; gap:8px; justify-content:flex-end; margin-top:12px }
+.login-btn { background:#2563eb; color:#fff; border:none; padding:8px 12px; border-radius:6px }
+.cancel-btn { background:#f3f4f6; border:none; padding:8px 12px; border-radius:6px }
+.auth-error { color:#b91c1c }
+.link-btn { background:transparent; border:none; color:#2563eb; cursor:pointer }
+.auth-toggle { margin-top:8px; font-size:0.9rem; color:#374151 }

@@ -1,78 +1,133 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMessage, ChatMessage as ApiChatMessage } from '../services/api';
+import { sendMessage, getChatSessions, getChatSession, deleteChatSession, ChatMessage as ApiChatMessage, getStats } from '../services/api';
 import './ClientChat.css';
 
 interface Message extends ApiChatMessage {
   sources?: Array<{ url: string; title: string }>;
-  timestamp?: string;
+  id: string;
 }
 
-export const ClientChat: React.FC = () => {
+interface Session {
+  session_id: string;
+  last_message: string;
+  updated_at: string;
+  message_count: number;
+}
+
+interface ClientChatProps {
+  resetTrigger?: number;
+}
+
+export const ClientChat: React.FC<ClientChatProps> = ({ resetTrigger }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [docCount, setDocCount] = useState(0);
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    scrollToBottom();
+    if (resetTrigger) {
+      startNewChat();
+    }
+  }, [resetTrigger]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Add welcome message on mount
   useEffect(() => {
-    setMessages([
-      {
-        role: 'assistant',
-        content:
-          "Hello! Welcome to our support chat. I'm here to help answer any questions you may have. How can I assist you today?",
-      },
-    ]);
+    getStats().then(data => setDocCount(data.stats?.total_documents || 0)).catch(() => { });
+    loadSessions();
   }, []);
+
+  const loadSessions = async () => {
+    try {
+      const data = await getChatSessions();
+      setSessions(data.sessions || []);
+    } catch (err) {
+      console.error('Failed to load sessions:', err);
+    }
+  };
+
+  const loadSession = async (id: string) => {
+    try {
+      const data = await getChatSession(id);
+      setSessionId(data.session_id);
+      setMessages(data.messages.map((m: any) => ({
+        ...m,
+        id: Math.random().toString(36).substring(2, 9)
+      })));
+    } catch (err) {
+      console.error('Failed to load session:', err);
+    }
+  };
+
+  const deleteSession = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm('Delete this conversation?')) return;
+
+    try {
+      await deleteChatSession(id);
+      setSessions(prev => prev.filter(s => s.session_id !== id));
+      if (sessionId === id) {
+        startNewChat();
+      }
+    } catch (err) {
+      console.error('Failed to delete session:', err);
+    }
+  };
+
+  const startNewChat = () => {
+    setSessionId(undefined);
+    setMessages([]);
+    setInput('');
+    inputRef.current?.focus();
+  };
+
+  const generateId = () => Math.random().toString(36).substring(2, 9);
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
-    const userMessage: Message = { role: 'user', content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const userMessage: Message = { role: 'user', content: input, id: generateId() };
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
     setLoading(true);
-    setError(null);
 
     try {
-      // Prepare conversation history (last 10 messages)
-      const history = messages.slice(-10).map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
+      // Optimistic update for session list
+      if (!sessionId) {
+        // We'll get a real session ID from the response
+      }
 
-      const response = await sendMessage(input, undefined, history);
+      const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
+      const response = await sendMessage(input, sessionId, history);
 
-      const assistantMessage: Message = {
+      setSessionId(response.session_id);
+
+      setMessages(prev => [...prev, {
         role: 'assistant',
         content: response.response,
         sources: response.sources,
-        timestamp: response.timestamp,
-      };
+        id: generateId()
+      }]);
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      // Refresh sessions list
+      loadSessions();
     } catch (err) {
-      console.error('Error sending message:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send message');
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content:
-            "I apologize for the inconvenience. We're experiencing a temporary issue. Please try again shortly.",
-        },
-      ]);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Unable to process your request. Please try again.',
+        id: generateId()
+      }]);
     } finally {
       setLoading(false);
+      inputRef.current?.focus();
     }
   };
 
@@ -84,106 +139,117 @@ export const ClientChat: React.FC = () => {
   };
 
   return (
-    <div className="client-chat">
-      <div className="chat-container">
+    <div className="chat-layout">
+      {/* History Sidebar */}
+      <div className={`chat-history ${showHistory ? 'open' : 'closed'}`}>
+        <div className="history-list">
+          {sessions.map(session => (
+            <div
+              key={session.session_id}
+              className={`history-item ${session.session_id === sessionId ? 'active' : ''}`}
+              onClick={() => loadSession(session.session_id)}
+            >
+              <div className="history-text">
+                <div className="history-title">{session.last_message}</div>
+                <div className="history-date">
+                  {new Date(session.updated_at).toLocaleDateString()}
+                </div>
+              </div>
+              <button
+                className="delete-history-btn"
+                onClick={(e) => deleteSession(e, session.session_id)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="chat-main">
         {/* Header */}
         <header className="chat-header">
-          <div className="header-info">
-            <div className="bot-avatar">💬</div>
-            <div>
-              <h1>Crawl Assistant</h1>
-              <span className="status-indicator">
-                <span className="status-dot"></span>
-                Available
-              </span>
-            </div>
+          <button
+            className="toggle-history-btn"
+            onClick={() => setShowHistory(!showHistory)}
+            title="Toggle Sidebar"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </button>
+          <div className="header-title">
+            <h1>Knowledge Assistant</h1>
+            <span className="header-subtitle">{docCount} documents indexed</span>
           </div>
         </header>
 
-        {/* Error Banner */}
-        {error && (
-          <div className="error-banner">
-            ⚠️ {error}
-            <button onClick={() => setError(null)}>✕</button>
-          </div>
-        )}
-
         {/* Messages */}
-        <div className="messages-container">
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`message ${msg.role}`}>
-              <div className="message-avatar">
-                {msg.role === 'user' ? '👤' : '💬'}
+        <div className="chat-messages">
+          {messages.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
               </div>
-              <div className="message-bubble">
-                <div className="message-text">{msg.content}</div>
-
-                {/* Sources */}
-                {msg.sources && msg.sources.length > 0 && (
-                  <div className="message-sources">
-                    <p className="sources-label">Related Resources:</p>
-                    <div className="sources-list">
-                      {msg.sources.map((source, i) => (
-                        <a
-                          key={i}
-                          href={source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="source-link"
-                        >
-                          {source.title || source.url}
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <h2>Start a conversation</h2>
+              <p>Ask questions about your indexed content</p>
             </div>
-          ))}
+          ) : (
+            messages.map((msg) => (
+              <div key={msg.id} className={`message ${msg.role}`}>
+                <div className="message-content">
+                  <p>{msg.content}</p>
+                  {msg.sources && msg.sources.length > 0 && (
+                    <div className="message-sources">
+                      <span className="sources-label">Sources</span>
+                      <div className="sources-list">
+                        {msg.sources.slice(0, 3).map((source, i) => (
+                          <a key={i} href={source.url} target="_blank" rel="noopener noreferrer">
+                            {source.title || 'View source'}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
 
-          {/* Typing Indicator */}
           {loading && (
             <div className="message assistant">
-              <div className="message-avatar">💬</div>
-              <div className="message-bubble">
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
+              <div className="message-content">
+                <div className="typing">
+                  <span></span><span></span><span></span>
                 </div>
               </div>
             </div>
           )}
-
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
-        <div className="input-container">
-          <div className="input-wrapper">
+        {/* Input */}
+        <div className="chat-input-container">
+          <div className="chat-input-wrapper">
             <textarea
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your question here..."
-              disabled={loading}
+              placeholder="Ask a question..."
               rows={1}
+              disabled={loading}
             />
-            <button
-              onClick={handleSend}
-              disabled={loading || !input.trim()}
-              className="send-button"
-            >
-              {loading ? (
-                <span className="loading-spinner"></span>
-              ) : (
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                </svg>
-              )}
+            <button onClick={handleSend} disabled={loading || !input.trim()} className="send-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
             </button>
           </div>
-          <p className="input-hint">Press Enter to send</p>
         </div>
       </div>
     </div>

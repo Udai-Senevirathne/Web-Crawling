@@ -36,9 +36,11 @@ class TextChunker:
                 chunk_tokens = tokens[start:end]
                 chunk_text = self.encoding.decode(chunk_tokens)
 
+                # Merge metadata copy to avoid mutation
+                meta = dict(metadata or {})
                 chunk_data = {
                     'text': chunk_text,
-                    'metadata': metadata or {},
+                    'metadata': meta,
                     'token_count': len(chunk_tokens)
                 }
 
@@ -58,9 +60,10 @@ class TextChunker:
                 end = start + char_chunk_size
                 chunk_text = text[start:end]
 
+                meta = dict(metadata or {})
                 chunk_data = {
                     'text': chunk_text,
-                    'metadata': metadata or {},
+                    'metadata': meta,
                     'token_count': len(chunk_text) // 4  # Approximate
                 }
 
@@ -69,7 +72,7 @@ class TextChunker:
 
         return chunks
 
-    def chunk_pages(self, pages: List[Dict]) -> List[Dict]:
+    def chunk_pages(self, pages: List[Dict], extra_metadata: Dict = None) -> List[Dict]:
         """Chunk multiple pages."""
         all_chunks = []
 
@@ -78,6 +81,10 @@ class TextChunker:
                 'source_url': page.get('url', ''),
                 'title': page.get('title', 'Untitled')
             }
+
+            # merge extra metadata (eg. client_id)
+            if extra_metadata:
+                metadata.update({k: v for k, v in extra_metadata.items() if v is not None})
 
             content = page.get('content', '')
             if content:
