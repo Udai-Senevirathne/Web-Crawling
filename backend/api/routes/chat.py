@@ -6,13 +6,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
-import sys
-from pathlib import Path
 import os
 import logging
-
-# Add parent directories to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from backend.services.chatbot_orchestrator import ChatbotOrchestrator
 from backend.services.db import get_db

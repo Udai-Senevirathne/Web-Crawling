@@ -4,16 +4,16 @@ Ingestion API endpoints - allows dynamic website ingestion.
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from typing import Optional
-import sys
 from pathlib import Path
 from datetime import datetime
 import uuid
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+import logging
 
 from backend.data_ingestion.pipeline import IngestionPipeline
 from backend.services.db import get_db
 import os
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -100,7 +100,7 @@ async def _run_ingestion_async(job_id: str, url: str, max_pages: int, max_depth:
         job_doc = db.ingestion_jobs.find_one({"job_id": job_id})
         if job_doc:
             ingestion_jobs[job_id] = job_doc
-        print(f"Ingestion job {job_id} failed: {e}")
+        logger.error("Ingestion job %s failed: %s", job_id, e, exc_info=True)
 
 
 @router.post("/ingest", response_model=IngestionResponse)
@@ -234,7 +234,7 @@ async def delete_ingestion_job(job_id: str):
         # Delete using job_id metadata
         vs.delete_documents(where={"job_id": job_id})
     except Exception as e:
-        print(f"Error deleting vectors for job {job_id}: {e}")
+        logger.warning("Error deleting vectors for job %s: %s", job_id, e)
         # Continue with DB deletion even if vectors fail
         
     # Delete upload directory if exists
@@ -244,7 +244,7 @@ async def delete_ingestion_job(job_id: str):
         try:
             shutil.rmtree(upload_dir)
         except Exception as e:
-            print(f"Error deleting upload dir {upload_dir}: {e}")
+            logger.warning("Error deleting upload dir %s: %s", upload_dir, e)
 
     # Delete from DB
     db.ingestion_jobs.delete_one({"job_id": job_id})
@@ -264,6 +264,10 @@ async def reset_database():
         from backend.services.vector_store import VectorStore
         vs = VectorStore()
         vs.reset_collection()
+        
+        # Invalidate the chat orchestrator singleton so it picks up the new collection
+        from backend.api.routes import chat as chat_module
+        chat_module.orchestrator = None
         
         # Clear uploads
         import shutil

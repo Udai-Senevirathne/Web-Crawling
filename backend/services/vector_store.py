@@ -80,7 +80,20 @@ class VectorStore:
 
         self.client = client
         self.collection = collection
+        self.collection_name = collection_name
         self.store_type = 'chroma'
+
+    def _refresh_collection(self):
+        """Re-acquire the ChromaDB collection reference (used after reset)."""
+        if self.store_type == 'chroma' and hasattr(self, 'client'):
+            try:
+                self.collection = self.client.get_or_create_collection(
+                    name=self.collection_name,
+                    metadata={'description': 'Website content embeddings'}
+                )
+                logger.info('Refreshed ChromaDB collection reference: %s', self.collection_name)
+            except Exception as e:
+                logger.error('Failed to refresh ChromaDB collection: %s', e)
 
     def _init_pinecone(self):
         """Initialize Pinecone (cloud vector store)."""
@@ -209,7 +222,21 @@ class VectorStore:
             )
             return results
         except Exception as e:
-            logger.exception('Error searching ChromaDB: %s', e)
+            # Handle stale collection reference (e.g. after reset by another instance)
+            if 'does not exist' in str(e).lower() or 'NotFoundError' in type(e).__name__:
+                logger.warning('Collection reference is stale, refreshing...')
+                self._refresh_collection()
+                try:
+                    results = self.collection.query(
+                        query_embeddings=[query_embedding],
+                        n_results=top_k,
+                        where=where
+                    )
+                    return results
+                except Exception as retry_e:
+                    logger.exception('Error searching ChromaDB after refresh: %s', retry_e)
+            else:
+                logger.exception('Error searching ChromaDB: %s', e)
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
 
     def _search_pinecone(self, query_embedding, top_k, where):
@@ -252,7 +279,14 @@ class VectorStore:
         if self.store_type == 'chroma':
             try:
                 return int(self.collection.count())
-            except Exception:
+            except Exception as e:
+                # Handle stale collection reference
+                if 'does not exist' in str(e).lower() or 'NotFoundError' in type(e).__name__:
+                    self._refresh_collection()
+                    try:
+                        return int(self.collection.count())
+                    except Exception:
+                        return 0
                 return 0
         elif self.store_type == 'pinecone':
             try:
@@ -302,12 +336,6 @@ class VectorStore:
             self.index = self.pc.Index(index_name)
             logger.info('Reset Pinecone index: %s', index_name)
 
-
-# Usage example
-if __name__ == '__main__':
-    store = VectorStore()
-    print(f'Store type: {store.store_type}')
-    print(f'Current document count: {store.count()}')
     def delete_documents(self, where: Dict):
         """Delete documents from vector store based on metadata filter."""
         if not where:
@@ -317,19 +345,21 @@ if __name__ == '__main__':
         try:
             if self.store_type == 'chroma':
                 self.collection.delete(where=where)
-                logger.info(f"Deleted documents from ChromaDB matching: {where}")
+                logger.info("Deleted documents from ChromaDB matching: %s", where)
             elif self.store_type == 'pinecone':
-                # Pinecone deletion by metadata is more complex, requires fetch then delete
-                # For now, we support deletion by ID prefix if 'job_id' is passed as filter
-                # This is a simplification; production usage might need vector search to find IDs first
-                # or metadata filtering if using serverless index
-                
                 # Try delete by metadata (works on serverless indexes)
                 try:
                     self.index.delete(filter=where)
-                    logger.info(f"Deleted documents from Pinecone matching: {where}")
+                    logger.info("Deleted documents from Pinecone matching: %s", where)
                 except Exception as e:
-                    logger.warning(f"Pinecone metadata deletion failed: {e}")
+                    logger.warning("Pinecone metadata deletion failed: %s", e)
         except Exception as e:
-            logger.error(f"Error deleting documents: {e}")
+            logger.error("Error deleting documents: %s", e)
             raise
+
+
+# Usage example
+if __name__ == '__main__':
+    store = VectorStore()
+    print(f'Store type: {store.store_type}')
+    print(f'Current document count: {store.count()}')

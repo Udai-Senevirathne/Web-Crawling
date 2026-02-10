@@ -5,6 +5,9 @@ Supports OpenAI, Google, and local HuggingFace embeddings.
 from typing import List
 import os
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Global model cache to avoid reloading
 _local_model = None
@@ -71,7 +74,7 @@ class EmbeddingService:
                     return response.data[0].embedding
             except Exception as e:
                 if attempt < self.max_retries - 1:
-                    print(f"Error generating embedding (attempt {attempt + 1}): {e}")
+                    logger.warning("Error generating embedding (attempt %d): %s", attempt + 1, e)
                     time.sleep(self.retry_delay * (attempt + 1))
                 else:
                     raise
@@ -114,10 +117,10 @@ class EmbeddingService:
                     break
                 except Exception as e:
                     if attempt < self.max_retries - 1:
-                        print(f"Error in batch {i//batch_size + 1} (attempt {attempt + 1}): {e}")
+                        logger.warning("Error in batch %d (attempt %d): %s", i//batch_size + 1, attempt + 1, e)
                         time.sleep(self.retry_delay * (attempt + 1))
                     else:
-                        print(f"Failed to process batch {i//batch_size + 1}: {e}")
+                        logger.error("Failed to process batch %d: %s", i//batch_size + 1, e)
                         # Add None placeholders for failed batch
                         all_embeddings.extend([None] * len(batch))
 

@@ -7,6 +7,7 @@ import sys
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import chat, health, ingestion
@@ -17,12 +18,45 @@ import logging
 # Load environment variables
 load_dotenv()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: startup and shutdown logic."""
+    # --- Startup ---
+    logger = logging.getLogger("uvicorn")
+    logger.info("%s", "=" * 60)
+    logger.info("Starting Web Crawler Chatbot API")
+    logger.info("Environment: %s", os.getenv('ENVIRONMENT', 'development'))
+    logger.info("API Docs: http://localhost:%s/docs", os.getenv('API_PORT', '8000'))
+    logger.info("Vector Store: %s", os.getenv('VECTOR_STORE_TYPE', 'chroma'))
+    logger.info("LLM Provider: %s", os.getenv('LLM_PROVIDER', 'groq'))
+
+    # Try to connect to database (optional)
+    try:
+        from backend.services.db import get_db, use_fake_db
+        if use_fake_db():
+            logger.info("Database: In-memory (USE_FAKE_DB=1)")
+        else:
+            db = get_db()
+            logger.info("Database: MongoDB connected")
+    except Exception as e:
+        logger.warning("Database not available: %s (using in-memory)", e)
+
+    logger.info("%s", "=" * 60)
+
+    yield  # App is running
+
+    # --- Shutdown ---
+    logger.info("Shutting down chatbot API...")
+
+
 app = FastAPI(
     title="Web Crawler Chatbot API",
     description="RAG-based chatbot for crawled website content",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # CORS Configuration
@@ -47,37 +81,6 @@ try:
     app.include_router(clients.router, prefix="/api", tags=["clients"])
 except ImportError:
     pass
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup."""
-    logger = logging.getLogger("uvicorn")
-    logger.info("%s", "=" * 60)
-    logger.info("Starting Web Crawler Chatbot API")
-    logger.info("Environment: %s", os.getenv('ENVIRONMENT', 'development'))
-    logger.info("API Docs: http://localhost:%s/docs", os.getenv('API_PORT', '8000'))
-    logger.info("Vector Store: %s", os.getenv('VECTOR_STORE_TYPE', 'chroma'))
-    logger.info("LLM Provider: %s", os.getenv('LLM_PROVIDER', 'groq'))
-    
-    # Try to connect to database (optional)
-    try:
-        from backend.services.db import get_db, use_fake_db
-        if use_fake_db():
-            logger.info("Database: In-memory (USE_FAKE_DB=1)")
-        else:
-            db = get_db()
-            logger.info("Database: MongoDB connected")
-    except Exception as e:
-        logger.warning("Database not available: %s (using in-memory)", e)
-    
-    logger.info("%s", "=" * 60)
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    print("\nShutting down chatbot API...")
 
 
 @app.get("/")

@@ -5,14 +5,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from datetime import datetime
 from bson import ObjectId
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+import logging
 
 from backend.models.client import ClientCreate, ClientUpdate, ClientOut, RAGConfig
 from backend.services.auth import require_superadmin
 from backend.services.db import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -169,7 +168,7 @@ async def get_client_stats(client_id: str, user=Depends(require_superadmin)):
     """
     Get statistics for a specific client (Super Admin only).
     """
-    print(f"DEBUG: get_client_stats called for client_id={client_id}")
+    logger.debug("get_client_stats called for client_id=%s", client_id)
     db = get_db()
     
     try:

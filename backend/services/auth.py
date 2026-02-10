@@ -20,6 +20,9 @@ ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRES_MINUTES", "60"))
 
 
+logger = logging.getLogger(__name__)
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hashed password."""
     # Development helper: allow plain text passwords for testing
@@ -58,42 +61,28 @@ def create_access_token(subject: str, data: Optional[dict] = None, expires_delta
 def authenticate_user(username: str, password: str):
     db = get_db()
     user = db.users.find_one({"username": username})
-    print("User Details..")
-    print(user)
     if not user:
+        logger.debug("Authentication failed: user '%s' not found", username)
         return None
     # Support both possible password field names to be resilient to seed scripts
     pwd_hash = user.get("password_hash") or user.get("hashed_password") or ""
     if not verify_password(password, pwd_hash):
+        logger.debug("Authentication failed: invalid password for user '%s'", username)
         return None
     user["id"] = str(user.get("_id"))
     return user
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
-    print("""Get current authenticated user.""")
+    """Get current authenticated user."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token , key=None, options={"verify_signature": False})
-        print("payload")
-        print("payload")
-        print("payload")
-        print("payload")
-        print("payload")
-        print("payload")
-        print(payload)
-        print(payload)
-        print(payload)
-        print(payload)
-        print(payload)
-        print(payload)
-        print(payload)
-        print(payload)
-        print(payload)
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        logger.debug("JWT payload decoded for subject: %s", payload.get("sub"))
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception

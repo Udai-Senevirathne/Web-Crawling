@@ -4,12 +4,15 @@ Supports Playwright for JavaScript-rendered pages and falls back to requests for
 """
 import asyncio
 import sys
+import logging
 from bs4 import BeautifulSoup
 import aiohttp
 from typing import List, Dict, Set
 import os
 from urllib.parse import urljoin, urlparse
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 class WebScraper:
@@ -48,8 +51,8 @@ class WebScraper:
 
                 await browser.close()
         except Exception as e:
-            print(f"Playwright crawling failed: {e}")
-            print("Falling back to requests-based crawling...")
+            logger.warning("Playwright crawling failed: %s", e)
+            logger.info("Falling back to requests-based crawling...")
             return await self._crawl_with_requests()
 
         return pages
@@ -71,7 +74,7 @@ class WebScraper:
         self.visited_urls.add(url)
 
         try:
-            print(f"Crawling: {url} (depth: {depth})")
+            logger.info("Crawling: %s (depth: %d)", url, depth)
             
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -92,7 +95,7 @@ class WebScraper:
 
             pages.append(page_data)
             title_preview = (page_data['title'] or 'No title')[:50]
-            print(f"[OK] Extracted: {title_preview}...")
+            logger.info("[OK] Extracted: %s...", title_preview)
 
             # Crawl linked pages
             for link in page_data['links'][:10]:
@@ -102,7 +105,7 @@ class WebScraper:
                     await asyncio.sleep(0.5)
 
         except Exception as e:
-            print(f"Error crawling {url}: {e}")
+            logger.warning("Error crawling %s: %s", url, e)
 
     async def _crawl_page_playwright(self, page, url: str, pages: List, depth: int):
         """Recursively crawl pages using Playwright."""
@@ -112,7 +115,7 @@ class WebScraper:
         self.visited_urls.add(url)
 
         try:
-            print(f"Crawling: {url} (depth: {depth})")
+            logger.info("Crawling: %s (depth: %d)", url, depth)
             await page.goto(url, wait_until='networkidle', timeout=30000)
 
             # Wait a bit for dynamic content
@@ -131,7 +134,7 @@ class WebScraper:
             }
 
             pages.append(page_data)
-            print(f"[OK] Extracted: {page_data['title'][:50]}...")
+            logger.info("[OK] Extracted: %s...", page_data['title'][:50])
 
             # Crawl linked pages (limited per page)
             for link in page_data['links'][:10]:
@@ -139,7 +142,7 @@ class WebScraper:
                     await self._crawl_page_playwright(page, link, pages, depth + 1)
 
         except Exception as e:
-            print(f"Error crawling {url}: {e}")
+            logger.warning("Error crawling %s: %s", url, e)
 
     def _extract_title(self, soup: BeautifulSoup, url: str) -> str:
         """Extract a descriptive title for the page."""

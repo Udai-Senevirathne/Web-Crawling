@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { sendMessage, getChatSessions, getChatSession, deleteChatSession, ChatMessage as ApiChatMessage, getStats } from '../services/api';
 import './ClientChat.css';
 
@@ -29,6 +30,24 @@ export const ClientChat: React.FC<ClientChatProps> = ({ resetTrigger }) => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const SUGGESTED_QUERIES = [
+    "Summarize the latest crawled content",
+    "What are the main topics available?",
+    "Find information about pricing",
+    "How do I configure the settings?"
+  ];
+
+  const adjustTextareaHeight = () => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 200)}px`;
+    }
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [input]);
 
   useEffect(() => {
     if (resetTrigger) {
@@ -190,19 +209,40 @@ export const ClientChat: React.FC<ClientChatProps> = ({ resetTrigger }) => {
         <div className="chat-messages">
           {messages.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
+              <div className="empty-icon-wrapper">
+                <div className="empty-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                </div>
               </div>
-              <h2>Start a conversation</h2>
-              <p>Ask questions about your indexed content</p>
+              <h2>How can I help you today?</h2>
+              <p>I'm ready to answer questions based on your crawled content.</p>
+
+              <div className="suggested-queries">
+                {SUGGESTED_QUERIES.map((query, index) => (
+                  <button
+                    key={index}
+                    className="suggested-query-btn"
+                    onClick={() => {
+                      setInput(query);
+                      if (inputRef.current) inputRef.current.focus();
+                    }}
+                  >
+                    {query}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             messages.map((msg) => (
               <div key={msg.id} className={`message ${msg.role}`}>
                 <div className="message-content">
-                  <p>{msg.content}</p>
+                  {msg.role === 'assistant' ? (
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  ) : (
+                    <p>{msg.content}</p>
+                  )}
                   {msg.sources && msg.sources.length > 0 && (
                     <div className="message-sources">
                       <span className="sources-label">Sources</span>
@@ -243,12 +283,14 @@ export const ClientChat: React.FC<ClientChatProps> = ({ resetTrigger }) => {
               placeholder="Ask a question..."
               rows={1}
               disabled={loading}
+              style={{ overflow: 'hidden' }}
             />
             <button onClick={handleSend} disabled={loading || !input.trim()} className="send-btn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
               </svg>
             </button>
+            <div className="input-hint">Press Enter to send, Shift + Enter for new line</div>
           </div>
         </div>
       </div>

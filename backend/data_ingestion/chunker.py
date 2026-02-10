@@ -2,7 +2,10 @@
 Text chunking for optimal embedding and retrieval.
 """
 from typing import List, Dict
+import logging
 import tiktoken
+
+logger = logging.getLogger(__name__)
 
 
 class TextChunker:
@@ -19,7 +22,7 @@ class TextChunker:
         except Exception:
             # Fallback to approximate token counting
             self.encoding = None
-            print("Warning: tiktoken encoding not available, using approximate token counting")
+            logger.warning("tiktoken encoding not available, using approximate token counting")
 
     def chunk_text(self, text: str, metadata: Dict = None) -> List[Dict]:
         """Split text into chunks with metadata."""

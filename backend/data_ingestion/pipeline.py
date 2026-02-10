@@ -2,12 +2,11 @@
 Complete data ingestion pipeline.
 """
 import asyncio
-import sys
 import os
+import logging
 from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+logger = logging.getLogger(__name__)
 
 from backend.data_ingestion.scraper import WebScraper
 from backend.data_ingestion.chunker import TextChunker
@@ -27,27 +26,27 @@ class IngestionPipeline:
 
     async def run(self, reset: bool = False, files: list[str] | None = None):
         """Run complete ingestion pipeline."""
-        print("=" * 60)
-        print("WEBSITE CONTENT INGESTION PIPELINE")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("WEBSITE CONTENT INGESTION PIPELINE")
+        logger.info("=" * 60)
         if self.website_url:
-            print(f"Target URL: {self.website_url}")
+            logger.info("Target URL: %s", self.website_url)
         if self.scraper:
-            print(f"Max Pages: {self.scraper.max_pages}")
-            print(f"Max Depth: {self.scraper.max_depth}")
+            logger.info("Max Pages: %s", self.scraper.max_pages)
+            logger.info("Max Depth: %s", self.scraper.max_depth)
         if self.client_id:
-            print(f"Client ID: {self.client_id}")
-        print("=" * 60)
+            logger.info("Client ID: %s", self.client_id)
+        logger.info("=" * 60)
 
         # Reset collection if requested
         if reset:
-            print("\n[WARN] Resetting existing collection...")
+            logger.warning("Resetting existing collection...")
             self.vector_store.reset_collection()
 
         # Step 1: Crawl website or process uploaded files
         pages = []
         if files and len(files) > 0:
-            print("\n[1/4] Processing uploaded files...")
+            logger.info("[1/4] Processing uploaded files...")
             for fp in files:
                 try:
                     text = self._extract_text_from_file(fp)
@@ -57,24 +56,24 @@ class IngestionPipeline:
                             'title': Path(fp).name,
                             'content': text
                         })
-                        print(f"[OK] Extracted file: {fp}")
+                        logger.info("[OK] Extracted file: %s", fp)
                 except Exception as e:
-                    print(f"[WARN] Failed to extract {fp}: {e}")
-            print(f"[OK] Processed {len(pages)} uploaded files")
+                    logger.warning("Failed to extract %s: %s", fp, e)
+            logger.info("[OK] Processed %d uploaded files", len(pages))
         elif self.scraper:
-            print("\n[1/4] Crawling website...")
+            logger.info("[1/4] Crawling website...")
             pages = await self.scraper.crawl()
-            print(f"[OK] Crawled {len(pages)} pages")
+            logger.info("[OK] Crawled %d pages", len(pages))
         else:
-            print("[ERROR] No URL or files provided.")
+            logger.error("No URL or files provided.")
             return
 
         if not pages:
-            print("[ERROR] No pages or files found. Check inputs and try again.")
+            logger.error("No pages or files found. Check inputs and try again.")
             return
 
         # Step 2: Chunk text
-        print("\n[2/4] Chunking text...")
+        logger.info("[2/4] Chunking text...")
         if self.client_id:
             extra_meta = {"client_id": self.client_id}
         else:
@@ -84,14 +83,14 @@ class IngestionPipeline:
             extra_meta["job_id"] = self.job_id
             
         chunks = self.chunker.chunk_pages(pages, extra_metadata=extra_meta)
-        print(f"[OK] Created {len(chunks)} chunks")
+        logger.info("[OK] Created %d chunks", len(chunks))
 
         if not chunks:
-            print("[ERROR] No chunks created. Content may be empty.")
+            logger.error("No chunks created. Content may be empty.")
             return
 
         # Step 3: Generate embeddings
-        print("\n[3/4] Generating embeddings...")
+        logger.info("[3/4] Generating embeddings...")
         texts = [chunk['text'] for chunk in chunks]
         embeddings = []
 
@@ -116,12 +115,12 @@ class IngestionPipeline:
                 batch = texts[i:i+batch_size]
                 batch_embeddings = self.embedding_service.generate_embeddings_batch(batch)
                 embeddings.extend(batch_embeddings)
-                print(f"  Progress: {min(i + batch_size, len(texts))}/{len(texts)}")
+                logger.info("  Progress: %d/%d", min(i + batch_size, len(texts)), len(texts))
 
-        print(f"[OK] Generated {len(embeddings)} embeddings")
+        logger.info("[OK] Generated %d embeddings", len(embeddings))
 
         # Step 4: Store in vector database
-        print("\n[4/4] Storing in vector database...")
+        logger.info("[4/4] Storing in vector database...")
         # Use UUID-based IDs to prevent collisions between crawl jobs
         import uuid
         batch_id = str(uuid.uuid4())[:8]  # Short unique prefix for this batch
@@ -135,21 +134,21 @@ class IngestionPipeline:
                 metadatas=metadatas,
                 ids=ids
             )
-            print(f"[OK] Stored {len(chunks)} documents in vector database")
+            logger.info("[OK] Stored %d documents in vector database", len(chunks))
         except Exception as e:
-            print(f"[ERROR] Error storing documents: {e}")
+            logger.error("Error storing documents: %s", e)
             return
 
         # Summary
-        print("\n" + "=" * 60)
-        print("PIPELINE COMPLETE!")
-        print("=" * 60)
-        print(f"Pages crawled:       {len(pages)}")
-        print(f"Chunks created:      {len(chunks)}")
-        print(f"Embeddings generated: {len(embeddings)}")
-        print(f"Total documents:     {self.vector_store.count()}")
-        print("=" * 60)
-        print("\nYour chatbot is ready to answer questions!")
+        logger.info("=" * 60)
+        logger.info("PIPELINE COMPLETE!")
+        logger.info("=" * 60)
+        logger.info("Pages crawled:       %d", len(pages))
+        logger.info("Chunks created:      %d", len(chunks))
+        logger.info("Embeddings generated: %d", len(embeddings))
+        logger.info("Total documents:     %d", self.vector_store.count())
+        logger.info("=" * 60)
+        logger.info("Your chatbot is ready to answer questions!")
 
     def _extract_text_from_file(self, path: str) -> str:
         """Extract text from a file. Supports PDF via PyPDF2 if available; otherwise tries to read plain text."""
@@ -171,10 +170,10 @@ class IngestionPipeline:
                         text_parts.append(page_text)
                 return '\n'.join(text_parts)
             except ImportError:
-                print('PyPDF2 not installed; skipping PDF extraction for', path)
+                logger.warning('PyPDF2 not installed; skipping PDF extraction for %s', path)
                 return ''
             except Exception as e:
-                print('Error extracting PDF', path, e)
+                logger.warning('Error extracting PDF %s: %s', path, e)
                 return ''
         else:
             # Try to read as plain text
@@ -215,8 +214,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(pipeline.run(reset=args.reset))
     except KeyboardInterrupt:
-        print("\n\n⚠️  Pipeline interrupted by user")
+        logger.warning("Pipeline interrupted by user")
     except Exception as e:
-        print(f"\n❌ Pipeline failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("Pipeline failed: %s", e, exc_info=True)

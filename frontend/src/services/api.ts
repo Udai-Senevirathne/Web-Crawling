@@ -172,6 +172,33 @@ export async function updateChatSettings(systemPrompt: string) {
   return response.json();
 }
 
+export async function uploadFiles(files: File[], maxPages = 50, maxDepth = 1, reset = false): Promise<IngestionResponse> {
+  const headers: Record<string, string> = {};
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const formData = new FormData();
+  files.forEach(file => formData.append('files', file));
+  formData.append('max_pages', String(maxPages));
+  formData.append('max_depth', String(maxDepth));
+  formData.append('reset', String(reset));
+
+  const response = await fetch(`${API_BASE_URL}/ingest/upload`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: 'Upload failed' }));
+    throw new Error(err.detail || 'Upload failed');
+  }
+
+  return response.json();
+}
+
 export async function resetDatabase() {
   const response = await fetch(`${API_BASE_URL}/ingest/reset`, { method: 'POST' });
   if (!response.ok) throw new Error('Failed to reset database');

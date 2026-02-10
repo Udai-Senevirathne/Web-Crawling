@@ -3,7 +3,10 @@ LLM service for response generation.
 Supports OpenAI, Google Gemini, and Groq.
 """
 import os
+import logging
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class LLMService:
@@ -107,9 +110,7 @@ Please answer the question based on the context provided above. If the informati
                 return response.choices[0].message.content
 
         except Exception as e:
-            print(f"Error generating response with {self.provider}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error generating response with %s: %s", self.provider, e, exc_info=True)
             return "I apologize, but I'm having trouble generating a response right now. Please try again."
 
     def generate_response_stream(
@@ -124,30 +125,55 @@ Please answer the question based on the context provided above. If the informati
             "You are a helpful AI assistant. Answer questions based on the provided context."
         )
 
-        messages = [
-            {"role": "system", "content": system_prompt}
-        ]
-
-        if conversation_history:
-            messages.extend(conversation_history[-10:])
-
-        user_message = f"""Context:\n{context}\n\nQuestion: {query}"""
-        messages.append({"role": "user", "content": user_message})
-
         try:
-            stream = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                stream=True
-            )
+            if self.provider == "google":
+                # Build prompt for Gemini streaming
+                prompt_parts = [system_prompt, "\n\n"]
 
-            for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                if conversation_history:
+                    for msg in conversation_history[-10:]:
+                        role = "User" if msg["role"] == "user" else "Assistant"
+                        prompt_parts.append(f"{role}: {msg['content']}\n")
+
+                prompt_parts.append(f"\nContext:\n{context}\n\nQuestion: {query}")
+                prompt = "".join(prompt_parts)
+
+                response = self.client.generate_content(
+                    prompt,
+                    generation_config={
+                        "temperature": self.temperature,
+                        "max_output_tokens": self.max_tokens,
+                    },
+                    stream=True
+                )
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+            else:
+                # OpenAI / Groq (both use OpenAI-compatible API)
+                messages = [
+                    {"role": "system", "content": system_prompt}
+                ]
+
+                if conversation_history:
+                    messages.extend(conversation_history[-10:])
+
+                user_message = f"""Context:\n{context}\n\nQuestion: {query}"""
+                messages.append({"role": "user", "content": user_message})
+
+                stream = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    stream=True
+                )
+
+                for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
         except Exception as e:
-            print(f"Error generating streaming response: {e}")
+            logger.error("Error generating streaming response with %s: %s", self.provider, e)
             yield "I apologize, but I'm having trouble generating a response right now."
 
 

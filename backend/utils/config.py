@@ -2,8 +2,11 @@
 Configuration management.
 """
 import os
+import logging
 from dotenv import load_dotenv
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -60,20 +63,20 @@ class Config:
     def validate(cls) -> bool:
         """Validate required configuration."""
         if not cls.OPENAI_API_KEY:
-            print("[WARN] Warning: OPENAI_API_KEY not set")
+            logger.warning("OPENAI_API_KEY not set")
             return False
         return True
 
     @classmethod
     def display(cls):
         """Display current configuration (safe values only)."""
-        print("Configuration:")
-        print(f"  Environment: {cls.ENVIRONMENT}")
-        print(f"  API Host: {cls.API_HOST}:{cls.API_PORT}")
-        print(f"  LLM Model: {cls.OPENAI_MODEL}")
-        print(f"  Embedding Model: {cls.OPENAI_EMBEDDING_MODEL}")
-        print(f"  Vector DB: {cls.VECTOR_DB_TYPE}")
-        print(f"  Top K: {cls.TOP_K}")
+        logger.info("Configuration:")
+        logger.info("  Environment: %s", cls.ENVIRONMENT)
+        logger.info("  API Host: %s:%s", cls.API_HOST, cls.API_PORT)
+        logger.info("  LLM Model: %s", cls.OPENAI_MODEL)
+        logger.info("  Embedding Model: %s", cls.OPENAI_EMBEDDING_MODEL)
+        logger.info("  Vector DB: %s", cls.VECTOR_DB_TYPE)
+        logger.info("  Top K: %s", cls.TOP_K)
 
 
 # Create config instance

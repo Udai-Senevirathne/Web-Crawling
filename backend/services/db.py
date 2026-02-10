@@ -43,7 +43,7 @@ class FakeCollection:
         self._data[doc_id] = doc
         return type('InsertResult', (), {'inserted_id': doc_id})()
     
-    def update_one(self, query, update):
+    def update_one(self, query, update, upsert=False):
         for doc_id, doc in self._data.items():
             if all(doc.get(k) == v for k, v in query.items()):
                 if '$set' in update:
@@ -52,6 +52,16 @@ class FakeCollection:
                     for k, v in update['$inc'].items():
                         doc[k] = doc.get(k, 0) + v
                 return type('UpdateResult', (), {'matched_count': 1, 'modified_count': 1})()
+        # No match found — upsert if requested
+        if upsert:
+            new_doc = dict(query)
+            if '$set' in update:
+                new_doc.update(update['$set'])
+            if '$inc' in update:
+                for k, v in update['$inc'].items():
+                    new_doc[k] = v
+            self.insert_one(new_doc)
+            return type('UpdateResult', (), {'matched_count': 0, 'modified_count': 0, 'upserted_id': new_doc.get('_id')})()
         return type('UpdateResult', (), {'matched_count': 0, 'modified_count': 0})()
     
     def delete_one(self, query):
@@ -66,6 +76,19 @@ class FakeCollection:
             return len(self._data)
         return len(self.find(query)._results)
 
+    def delete_many(self, query):
+        if not query:
+            count = len(self._data)
+            self._data.clear()
+            return type('DeleteResult', (), {'deleted_count': count})()
+        to_delete = []
+        for doc_id, doc in self._data.items():
+            if all(doc.get(k) == v for k, v in query.items()):
+                to_delete.append(doc_id)
+        for doc_id in to_delete:
+            del self._data[doc_id]
+        return type('DeleteResult', (), {'deleted_count': len(to_delete)})()
+
 
 class FakeCursor:
     """Fake cursor for in-memory queries."""
@@ -73,7 +96,14 @@ class FakeCursor:
     def __init__(self, results):
         self._results = results
     
-    def sort(self, *args, **kwargs):
+    def sort(self, key, direction=1):
+        try:
+            self._results.sort(
+                key=lambda x: x.get(key, '') if not isinstance(key, str) or x.get(key) is not None else '',
+                reverse=(direction == -1)
+            )
+        except TypeError:
+            pass  # Gracefully handle uncomparable values
         return self
     
     def limit(self, n):

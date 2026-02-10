@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { startIngestion, getIngestionStatus, getStats, listIngestionJobs, deleteIngestionJob, IngestionStatus } from '../services/api';
+import { startIngestion, getIngestionStatus, getStats, listIngestionJobs, deleteIngestionJob, uploadFiles, IngestionStatus } from '../services/api';
 import './AdminPanel.css';
 
 interface Stats {
@@ -109,23 +109,7 @@ export const AdminPanel: React.FC = () => {
     setMessage(null);
 
     try {
-      const formData = new FormData();
-      files.forEach(file => formData.append('files', file));
-      formData.append('max_pages', '50');
-      formData.append('max_depth', '1');
-      formData.append('reset', 'false');
-
-      const response = await fetch('/api/ingest/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
-        throw new Error(error.detail || 'Upload failed');
-      }
-
-      const data = await response.json();
+      const data = await uploadFiles(files);
       setCurrentJob({
         job_id: data.job_id,
         status: 'running',

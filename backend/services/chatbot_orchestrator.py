@@ -1,11 +1,14 @@
 """
 Main chatbot orchestration logic (RAG pipeline).
 """
+import logging
 from .embeddings import EmbeddingService
 from .vector_store import VectorStore
 from .llm_service import LLMService
 from typing import Dict, List, Optional
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class ChatbotOrchestrator:
@@ -33,15 +36,15 @@ class ChatbotOrchestrator:
             client_id: Optional client ID for tenant isolation (None = search all)
             system_prompt: Optional system prompt to override default behavior
         """
-        print(f"Processing query: {query[:50]}...")
+        logger.info("Processing query: %s...", query[:50])
         if client_id:
-            print(f"  Filtering by client_id: {client_id}")
+            logger.info("  Filtering by client_id: %s", client_id)
 
         # Step 1: Generate query embedding
         try:
             query_embedding = self.embedding_service.generate_embedding(query)
         except Exception as e:
-            print(f"Error generating embedding: {e}")
+            logger.error("Error generating embedding: %s", e)
             return {
                 "response": "I'm having trouble processing your question. Please try again.",
                 "sources": [],
@@ -60,7 +63,7 @@ class ChatbotOrchestrator:
                 where=where_clause
             )
         except Exception as e:
-            print(f"Error searching vector store: {e}")
+            logger.error("Error searching vector store: %s", e)
             search_results = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
 
         # Step 3: Prepare context from retrieved documents
@@ -80,7 +83,7 @@ class ChatbotOrchestrator:
                 system_prompt=system_prompt
             )
         except Exception as e:
-            print(f"Error generating LLM response: {e}")
+            logger.error("Error generating LLM response: %s", e)
             response = "I apologize, but I'm having trouble generating a response right now. Please try again."
 
         # Step 5: Return structured response
