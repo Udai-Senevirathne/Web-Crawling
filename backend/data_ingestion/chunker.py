@@ -3,7 +3,11 @@ Text chunking for optimal embedding and retrieval.
 """
 from typing import List, Dict
 import logging
-import tiktoken
+
+try:
+    import tiktoken
+except ImportError:
+    tiktoken = None
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +22,8 @@ class TextChunker:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         try:
+            if tiktoken is None:
+                raise ImportError("tiktoken not installed")
             self.encoding = tiktoken.get_encoding(encoding_name)
         except Exception:
             # Fallback to approximate token counting
