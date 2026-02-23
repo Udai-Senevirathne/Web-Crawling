@@ -34,6 +34,9 @@ class VectorStore:
             raise
 
         persist_dir = os.getenv('CHROMA_PERSIST_DIRECTORY', './data/chroma_db')
+        # On Vercel (serverless), only /tmp is writable
+        if os.getenv('VERCEL') or os.getenv('VERCEL_ENV'):
+            persist_dir = '/tmp/chroma_db'
         collection_name = os.getenv('CHROMA_COLLECTION_NAME', 'website_docs')
 
         os.makedirs(persist_dir, exist_ok=True)

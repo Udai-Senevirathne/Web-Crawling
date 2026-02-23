@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Data (too large for deployment, use cloud storage/Pinecone instead)
+data/chroma_db/
+data/uploads/
+
+# Logs
+logs/
+
+# Testing
+.pytest_cache/
+tests/
+
+# Dev files
+.env.local
+.env.*.local
+
+# Misc
+*.egg-info/
+dist/
+build/
