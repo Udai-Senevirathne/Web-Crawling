@@ -13,11 +13,26 @@ logger = logging.getLogger(__name__)
 
 class ChatbotOrchestrator:
     def __init__(self):
-        self.embedding_service = EmbeddingService()
-        self.vector_store = VectorStore()
-        self.llm_service = LLMService()
         self.top_k = int(os.getenv("TOP_K", "5"))
         self.similarity_threshold = float(os.getenv("SIMILARITY_THRESHOLD", "2.0"))
+
+        try:
+            self.embedding_service = EmbeddingService()
+        except Exception as e:
+            logger.warning("EmbeddingService init failed: %s", e)
+            self.embedding_service = None
+
+        try:
+            self.vector_store = VectorStore()
+        except Exception as e:
+            logger.warning("VectorStore init failed: %s", e)
+            self.vector_store = None
+
+        try:
+            self.llm_service = LLMService()
+        except Exception as e:
+            logger.warning("LLMService init failed: %s", e)
+            self.llm_service = None
 
     async def process_query(
         self,
@@ -41,30 +56,31 @@ class ChatbotOrchestrator:
             logger.info("  Filtering by client_id: %s", client_id)
 
         # Step 1: Generate query embedding
-        try:
-            query_embedding = self.embedding_service.generate_embedding(query)
-        except Exception as e:
-            logger.error("Error generating embedding: %s", e)
-            return {
-                "response": "I'm having trouble processing your question. Please try again.",
-                "sources": [],
-                "session_id": session_id,
-                "context_used": False
-            }
+        query_embedding = None
+        if self.embedding_service is None:
+            logger.warning("EmbeddingService unavailable, skipping vector search")
+        else:
+            try:
+                query_embedding = self.embedding_service.generate_embedding(query)
+            except Exception as e:
+                logger.error("Error generating embedding: %s", e)
 
         # Step 2: Search vector store for relevant documents
         # Only apply where filter if client_id is provided
         where_clause = {"client_id": client_id} if client_id else None
-        
-        try:
-            search_results = self.vector_store.search(
-                query_embedding=query_embedding,
-                top_k=self.top_k,
-                where=where_clause
-            )
-        except Exception as e:
-            logger.error("Error searching vector store: %s", e)
-            search_results = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+        search_results = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+
+        if self.vector_store is None or query_embedding is None:
+            logger.warning("VectorStore/embedding unavailable, answering without RAG context")
+        else:
+            try:
+                search_results = self.vector_store.search(
+                    query_embedding=query_embedding,
+                    top_k=self.top_k,
+                    where=where_clause
+                )
+            except Exception as e:
+                logger.error("Error searching vector store: %s", e)
 
         # Step 3: Prepare context from retrieved documents
         context = self._prepare_context(search_results)
@@ -75,16 +91,19 @@ class ChatbotOrchestrator:
             context = "No relevant information found in the knowledge base."
 
         # Step 4: Generate response using LLM
-        try:
-            response = self.llm_service.generate_response(
-                query=query,
-                context=context,
-                conversation_history=conversation_history,
-                system_prompt=system_prompt
-            )
-        except Exception as e:
-            logger.error("Error generating LLM response: %s", e)
-            response = "I apologize, but I'm having trouble generating a response right now. Please try again."
+        if self.llm_service is None:
+            response = "The LLM service is not configured. Please set the required API keys (GROQ_API_KEY or GOOGLE_API_KEY) in your environment."
+        else:
+            try:
+                response = self.llm_service.generate_response(
+                    query=query,
+                    context=context,
+                    conversation_history=conversation_history,
+                    system_prompt=system_prompt
+                )
+            except Exception as e:
+                logger.error("Error generating LLM response: %s", e)
+                response = "I apologize, but I'm having trouble generating a response right now. Please try again."
 
         # Step 5: Return structured response
         return {
@@ -153,14 +172,23 @@ class ChatbotOrchestrator:
 
     def get_stats(self) -> Dict:
         """Get statistics about the chatbot's knowledge base."""
-        embedding_model = getattr(self.embedding_service, 'model', None)
-        if embedding_model is None and self.embedding_service.provider == 'local':
-            embedding_model = 'all-MiniLM-L6-v2'
-        
+        embedding_model = None
+        if self.embedding_service:
+            embedding_model = getattr(self.embedding_service, 'model', None)
+            if embedding_model is None and getattr(self.embedding_service, 'provider', None) == 'local':
+                embedding_model = 'all-MiniLM-L6-v2'
+
+        doc_count = 0
+        if self.vector_store:
+            try:
+                doc_count = self.vector_store.count()
+            except Exception:
+                pass
+
         return {
-            "total_documents": self.vector_store.count(),
+            "total_documents": doc_count,
             "top_k": self.top_k,
-            "model": self.llm_service.model,
+            "model": getattr(self.llm_service, 'model', 'unavailable') if self.llm_service else 'unavailable',
             "embedding_model": embedding_model
         }
 

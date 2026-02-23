@@ -171,8 +171,8 @@ async def get_stats():
             # Fallback stats
             vs = orch.vector_store
             stats = {
-                "total_documents": vs.count(),
-                "model": orch.llm_service.model
+                "total_documents": vs.count() if vs else 0,
+                "model": orch.llm_service.model if orch.llm_service else 'unavailable'
             }
 
         return {

@@ -1,6 +1,9 @@
 # Lightweight requirements for Vercel serverless deployment
-# Excludes: sentence-transformers, playwright, torch (too large for 250MB limit)
-# Set EMBEDDING_PROVIDER=google or openai in Vercel env vars to avoid local embeddings
+# REQUIRED Vercel env vars:
+#   GROQ_API_KEY, LLM_PROVIDER=groq
+#   EMBEDDING_PROVIDER=google, GOOGLE_API_KEY
+#   VECTOR_STORE_TYPE=pinecone, PINECONE_API_KEY, PINECONE_INDEX_NAME=webdocs
+#   USE_FAKE_DB=1
 
 # Core
 fastapi>=0.100.0
@@ -8,15 +11,12 @@ uvicorn>=0.23.0
 pydantic>=2.0.0
 
 # LLM
-openai>=1.0.0
 groq>=0.4.0
+openai>=1.0.0
 google-generativeai>=0.3.0
 
-# Vector Stores (cloud - recommended for serverless)
+# Vector Store (Pinecone - required on Vercel, chromadb native binaries fail)
 pinecone-client>=3.0.0
-
-# ChromaDB (local - only works in /tmp on Vercel, use Pinecone instead)
-chromadb>=0.4.0
 
 # Web utilities
 requests>=2.31.0
@@ -33,7 +33,6 @@ python-dotenv>=1.0.0
 python-multipart>=0.0.6
 PyPDF2>=3.0.0
 pyyaml>=6.0.0
-tqdm>=4.66.0
 
 # Security
 python-jose[cryptography]>=3.3.0
