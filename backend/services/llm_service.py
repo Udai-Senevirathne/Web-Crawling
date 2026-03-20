@@ -13,7 +13,7 @@ class LLMService:
     def __init__(self):
         self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
         self.temperature = float(os.getenv("TEMPERATURE", "0.7"))
-        self.max_tokens = int(os.getenv("MAX_TOKENS", "500"))
+        self.max_tokens = int(os.getenv("MAX_TOKENS", "1500"))
 
         if self.provider == "google":
             import google.generativeai as genai
@@ -53,8 +53,11 @@ class LLMService:
         if not system_prompt:
             system_prompt = os.getenv(
                 "SYSTEM_PROMPT",
-                "You are a helpful AI assistant for this website. Answer questions based on the provided context. "
-                "If you cannot find the answer in the context, politely say that you don't have that information."
+                "You are a helpful AI assistant for this website. "
+                "Use the provided context to answer the user's question as accurately as possible. "
+                "If the context contains relevant information, prioritize it. "
+                "If the context is incomplete or missing key details, supplement with your general knowledge and clearly indicate you are doing so. "
+                "Always aim to give a useful, informative answer rather than simply saying you don't know."
             )
 
         try:

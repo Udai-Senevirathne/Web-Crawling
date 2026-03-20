@@ -103,7 +103,7 @@ async def chat(request: ChatRequest, authorization: Optional[str] = Header(None)
         result = await orch.process_query(
             query=request.message,
             session_id=session_id,
-            conversation_history=[msg.dict() for msg in request.conversation_history] if request.conversation_history else None,
+            conversation_history=[msg.model_dump() for msg in request.conversation_history] if request.conversation_history else None,
             client_id=client_id,
             system_prompt=system_prompt
         )
@@ -120,7 +120,7 @@ async def chat(request: ChatRequest, authorization: Optional[str] = Header(None)
         # Get existing history to append to
         current_history = []
         if request.conversation_history:
-            current_history = [msg.dict() for msg in request.conversation_history]
+            current_history = [msg.model_dump() for msg in request.conversation_history]
             
         current_history.append({"role": "user", "content": request.message})
         current_history.append({"role": "assistant", "content": result["response"]})
@@ -171,8 +171,8 @@ async def get_stats():
             # Fallback stats
             vs = orch.vector_store
             stats = {
-                "total_documents": vs.count() if vs else 0,
-                "model": orch.llm_service.model if orch.llm_service else 'unavailable'
+                "total_documents": vs.count(),
+                "model": orch.llm_service.model
             }
 
         return {

@@ -25,7 +25,7 @@ def serialize_client(client_doc) -> dict:
     
     # Ensure rag_config has all fields
     if "rag_config" not in client_doc or not client_doc["rag_config"]:
-        client_doc["rag_config"] = RAGConfig().dict()
+        client_doc["rag_config"] = RAGConfig().model_dump()
     
     return client_doc
 
@@ -46,7 +46,7 @@ async def create_client(client: ClientCreate, user=Depends(require_superadmin)):
     client_doc = {
         "name": client.name,
         "enl_id": client.enl_id,
-        "rag_config": client.rag_config.dict() if client.rag_config else RAGConfig().dict(),
+        "rag_config": client.rag_config.model_dump() if client.rag_config else RAGConfig().model_dump(),
         "status": client.status,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
@@ -114,7 +114,7 @@ async def update_client(client_id: str, client_update: ClientUpdate, user=Depend
     if client_update.name is not None:
         update_data["name"] = client_update.name
     if client_update.rag_config is not None:
-        update_data["rag_config"] = client_update.rag_config.dict()
+        update_data["rag_config"] = client_update.rag_config.model_dump()
     if client_update.status is not None:
         update_data["status"] = client_update.status
     

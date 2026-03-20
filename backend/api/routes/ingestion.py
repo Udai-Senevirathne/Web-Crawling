@@ -287,12 +287,12 @@ async def reset_database():
 
 @router.post("/ingest/upload", response_model=IngestionResponse)
 async def upload_and_ingest(
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     max_pages: int = Form(50),
     max_depth: int = Form(3),
     reset: bool = Form(False),
     client_id: str = Form(None),
-    background_tasks: BackgroundTasks = None
 ):
     """Upload files (PDF, text) and start ingestion job."""
     try:
@@ -305,7 +305,8 @@ async def upload_and_ingest(
 
         saved_files = []
         for up in files:
-            dest = upload_dir / up.filename
+            safe_name = up.filename or f"{uuid.uuid4()}{Path(up.filename or '').suffix}"
+            dest = upload_dir / safe_name
             with open(dest, "wb") as f:
                 f.write(await up.read())
             saved_files.append(str(dest))
@@ -330,7 +331,7 @@ async def upload_and_ingest(
         ingestion_jobs[job_id] = job_doc
 
         # Schedule background task
-        background_tasks.add_task(run_ingestion_task_sync, job_id, None, max_pages, max_depth, reset, client_id, saved_files)
+        background_tasks.add_task(run_ingestion_task_sync, job_id, "", max_pages, max_depth, reset, client_id, saved_files)
 
         return IngestionResponse(
             job_id=job_id,

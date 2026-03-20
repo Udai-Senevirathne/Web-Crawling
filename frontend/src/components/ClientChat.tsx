@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { sendMessage, getChatSessions, getChatSession, deleteChatSession, ChatMessage as ApiChatMessage, getStats } from '../services/api';
 import './ClientChat.css';
@@ -38,6 +38,13 @@ export const ClientChat: React.FC<ClientChatProps> = ({ resetTrigger }) => {
     "How do I configure the settings?"
   ];
 
+  const startNewChat = useCallback(() => {
+    setSessionId(undefined);
+    setMessages([]);
+    setInput('');
+    inputRef.current?.focus();
+  }, []);
+
   const adjustTextareaHeight = () => {
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
@@ -53,7 +60,7 @@ export const ClientChat: React.FC<ClientChatProps> = ({ resetTrigger }) => {
     if (resetTrigger) {
       startNewChat();
     }
-  }, [resetTrigger]);
+  }, [resetTrigger, startNewChat]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -99,13 +106,6 @@ export const ClientChat: React.FC<ClientChatProps> = ({ resetTrigger }) => {
     } catch (err) {
       console.error('Failed to delete session:', err);
     }
-  };
-
-  const startNewChat = () => {
-    setSessionId(undefined);
-    setMessages([]);
-    setInput('');
-    inputRef.current?.focus();
   };
 
   const generateId = () => Math.random().toString(36).substring(2, 9);

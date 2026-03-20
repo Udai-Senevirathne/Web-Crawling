@@ -1,7 +1,5 @@
-/// <reference types="vite/client" />
-
 // Use relative path for Vite proxy, or full URL if env var is set
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export interface ChatResponse {
   response: string;
@@ -202,5 +200,121 @@ export async function uploadFiles(files: File[], maxPages = 50, maxDepth = 1, re
 export async function resetDatabase() {
   const response = await fetch(`${API_BASE_URL}/ingest/reset`, { method: 'POST' });
   if (!response.ok) throw new Error('Failed to reset database');
+  return response.json();
+}
+
+export interface ClientCreate {
+  name: string;
+  enl_id: string;
+  status: string;
+  rag_config?: any;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  enl_id: string;
+  rag_config: any;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  document_count: number;
+}
+
+export async function login(username: string, password: string) {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Login failed' }));
+    throw new Error(error.detail || 'Login failed');
+  }
+  const data = await response.json();
+  localStorage.setItem('auth_token', data.access_token);
+  return data;
+}
+
+export async function register(username: string, password: string, role: string = 'user', client_id?: string) {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, role, client_id })
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Registration failed' }));
+    throw new Error(error.detail || 'Registration failed');
+  }
+  return response.json();
+}
+
+export async function getCurrentUser() {
+  const token = localStorage.getItem('auth_token');
+  if (!token) return null;
+  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!response.ok) return null;
+  return response.json();
+}
+
+export function logout() {
+  localStorage.removeItem('auth_token');
+}
+
+export async function listClients(): Promise<Client[]> {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(`${API_BASE_URL}/clients`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+  });
+  if (!response.ok) throw new Error('Failed to list clients');
+  return response.json();
+}
+
+export async function createClient(client: ClientCreate): Promise<Client> {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(`${API_BASE_URL}/clients`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(client)
+  });
+  if (!response.ok) throw new Error('Failed to create client');
+  return response.json();
+}
+
+export async function updateClient(clientId: string, updates: Partial<ClientCreate>): Promise<Client> {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(`${API_BASE_URL}/clients/${clientId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(updates)
+  });
+  if (!response.ok) throw new Error('Failed to update client');
+  return response.json();
+}
+
+export async function deleteClient(clientId: string) {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(`${API_BASE_URL}/clients/${clientId}`, {
+    method: 'DELETE',
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+  });
+  if (!response.ok) throw new Error('Failed to delete client');
+  return response.json();
+}
+
+export async function getClientStats(clientId: string) {
+  const token = localStorage.getItem('auth_token');
+  const response = await fetch(`${API_BASE_URL}/clients/${clientId}/stats`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+  });
+  if (!response.ok) throw new Error('Failed to get client stats');
   return response.json();
 }

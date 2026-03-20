@@ -113,8 +113,8 @@ class FakeCursor:
     def __iter__(self):
         return iter(self._results)
     
-    def __list__(self):
-        return self._results
+    def __len__(self):
+        return len(self._results)
 
 
 class FakeDB:
